@@ -30,7 +30,13 @@ Then enable the extension:
 gnome-extensions enable o-tiling@oliwebd.github.com
 ```
 
-If the extension does not appear, log out and log back in.
+## Updating
+
+To update to the latest version, run:
+
+```bash
+cd ~/.local/share/gnome-shell/extensions/o-tiling@oliwebd.github.com && git pull
+```
 
 ## Compatibility
 
