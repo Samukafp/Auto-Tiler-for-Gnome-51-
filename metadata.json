@@ -1,0 +1,8 @@
+{
+  "uuid": "auto-tiler@local",
+  "name": "Auto Tiler",
+  "description": "Tiling automático para o GNOME Shell, inspirado no COSMIC. Respeita a maximização e o fullscreen nativos do GNOME: nunca os altera, nunca os remove.",
+  "shell-version": ["51"],
+  "settings-schema": "org.gnome.shell.extensions.auto-tiler",
+  "version-name": "0.3.0"
+}

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.auto-tiler" path="/org/gnome/shell/extensions/auto-tiler/">
+
+    <key name="tiling-enabled" type="b">
+      <default>true</default>
+      <summary>Tiling automático activo</summary>
+      <description>Se falso, a extensão não move nem redimensiona nenhuma janela.</description>
+    </key>
+
+    <key name="gaps-enabled" type="b">
+      <default>true</default>
+      <summary>Usar espaçamentos</summary>
+      <description>Se falso, todos os espaçamentos (internos e externos) são zero.</description>
+    </key>
+
+    <key name="inner-gap" type="i">
+      <default>8</default>
+      <range min="0" max="64"/>
+      <summary>Espaçamento interno (px)</summary>
+      <description>Espaço entre janelas vizinhas.</description>
+    </key>
+
+    <key name="outer-gap" type="i">
+      <default>8</default>
+      <range min="0" max="64"/>
+      <summary>Espaçamento externo (px)</summary>
+      <description>Espaço entre as janelas e as extremidades da área de trabalho.</description>
+    </key>
+
+    <key name="default-ratio" type="d">
+      <default>0.5</default>
+      <range min="0.2" max="0.8"/>
+      <summary>Proporção de divisão por omissão</summary>
+      <description>Fracção do espaço atribuída à janela mais antiga em cada divisão.</description>
+    </key>
+
+    <key name="float-wm-classes" type="as">
+      <default>['org.gnome.Calculator', 'gnome-calculator', 'org.gnome.Characters']</default>
+      <summary>Aplicações que abrem como flutuantes</summary>
+      <description>Valores de WM_CLASS / app-id (sem distinção de maiúsculas).</description>
+    </key>
+
+
+
+    <key name="max-windows" type="i">
+      <default>4</default>
+      <range min="1" max="12"/>
+      <summary>Máximo de janelas por workspace</summary>
+      <description>Quando um workspace atinge este número de janelas em tiling, a janela seguinte vai para o workspace seguinte. Janelas minimizadas e flutuantes não contam.</description>
+    </key>
+
+    <key name="swap-on-drag" type="b">
+      <default>true</default>
+      <summary>Trocar janelas ao arrastar</summary>
+      <description>Arrastar uma janela em tiling para cima de outra troca-as de lugar.</description>
+    </key>
+    <key name="animations-enabled" type="b">
+      <default>true</default>
+      <summary>Animações do tiling</summary>
+      <description>Transições curtas quando as janelas mudam de posição ou tamanho. Respeita as animações do GNOME.</description>
+    </key>
+
+    <key name="unmaximize-on-open" type="b">
+      <default>true</default>
+      <summary>Desmaximizar janelas que abrem maximizadas</summary>
+      <description>Só no instante em que a janela abre, para entrar em tiling. Maximizar depois, pelo utilizador, é sempre respeitado.</description>
+    </key>
+
+    <key name="focus-border-enabled" type="b">
+      <default>true</default>
+      <summary>Borda na janela focada</summary>
+    </key>
+
+    <key name="focus-border-width" type="i">
+      <default>3</default>
+      <range min="1" max="12"/>
+      <summary>Largura da borda (px)</summary>
+    </key>
+
+    <key name="focus-border-radius" type="i">
+      <default>12</default>
+      <range min="0" max="32"/>
+      <summary>Arredondamento da borda (px)</summary>
+    </key>
+
+    <key name="focus-border-color" type="s">
+      <default>'#33d17a'</default>
+      <summary>Cor da borda (hexadecimal)</summary>
+    </key>
+
+    <key name="toggle-float" type="as">
+      <default>['&lt;Super&gt;f']</default>
+      <summary>Alternar janela flutuante / em tiling</summary>
+    </key>
+
+    <key name="toggle-tiling" type="as">
+      <default>['&lt;Super&gt;y']</default>
+      <summary>Activar / desactivar o tiling</summary>
+    </key>
+  </schema>
+</schemalist>
