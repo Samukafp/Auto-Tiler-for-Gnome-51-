@@ -11,19 +11,48 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window._settings = settings; // mantém a referência viva enquanto a janela existir
+        window.set_default_size(640, 720);
 
-        const page = new Adw.PreferencesPage({
-            title: 'Geral',
-            icon_name: 'view-grid-symbolic',
+        // Uma aba por assunto (o Adw mostra o seletor de abas no topo).
+        const pages = [
+            ['Geral', 'preferences-system-symbolic', [this._tilingGroup(settings), this._limitGroup(settings),
+                this._behaviourGroup(settings)]],
+            ['Espaçamentos', 'view-grid-symbolic', [this._gapsGroup(settings)]],
+            ['Borda', 'applications-graphics-symbolic', [this._appearanceGroup(settings)]],
+            ['Janelas', 'window-new-symbolic', [this._floatingGroup(settings)]],
+            ['Atalhos', 'input-keyboard-symbolic', [this._shortcutsGroup(settings)]],
+        ];
+        for (const [title, icon, groups] of pages) {
+            const page = new Adw.PreferencesPage({title, icon_name: icon});
+            for (const group of groups)
+                page.add(group);
+            window.add(page);
+        }
+    }
+
+    _limitGroup(settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Limite por ambiente de trabalho',
+            description: 'Janelas minimizadas, flutuantes e de outros workspaces não contam para o limite.',
         });
-        window.add(page);
 
-        page.add(this._tilingGroup(settings));
-        page.add(this._gapsGroup(settings));
-        page.add(this._behaviourGroup(settings));
-        page.add(this._floatingGroup(settings));
-        page.add(this._appearanceGroup(settings));
-        page.add(this._shortcutsGroup(settings));
+        const enabled = new Adw.SwitchRow({
+            title: 'Limitar janelas por workspace',
+            subtitle: 'Desligado: todas as janelas ficam no mesmo workspace, sem limite',
+        });
+        settings.bind('limit-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(enabled);
+
+        const max = new Adw.SpinRow({
+            title: 'Máximo de janelas por workspace',
+            subtitle: 'A janela seguinte vai para o workspace seguinte com espaço',
+            adjustment: new Gtk.Adjustment({lower: 1, upper: 12, step_increment: 1}),
+        });
+        settings.bind('max-windows', max, 'value', Gio.SettingsBindFlags.DEFAULT);
+        enabled.bind_property('active', max, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(max);
+
+        return group;
     }
 
     _tilingGroup(settings) {
@@ -81,16 +110,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     _behaviourGroup(settings) {
         const group = new Adw.PreferencesGroup({
             title: 'Comportamento',
-            description: 'Janelas minimizadas, flutuantes e de outros workspaces não contam para o limite.',
         });
-
-        const max = new Adw.SpinRow({
-            title: 'Máximo de janelas por workspace',
-            subtitle: 'A janela seguinte vai para o workspace seguinte com espaço',
-            adjustment: new Gtk.Adjustment({lower: 1, upper: 12, step_increment: 1}),
-        });
-        settings.bind('max-windows', max, 'value', Gio.SettingsBindFlags.DEFAULT);
-        group.add(max);
 
         const unmax = new Adw.SwitchRow({
             title: 'Janelas novas entram em tiling',
@@ -118,7 +138,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _appearanceGroup(settings) {
-        const group = new Adw.PreferencesGroup({title: 'Borda da janela focada'});
+        const group = new Adw.PreferencesGroup({title: 'Borda da janela focada', description: 'Gradiente entre duas cores que gira à volta da janela.'});
 
         const enabled = new Adw.SwitchRow({title: 'Mostrar borda'});
         settings.bind('focus-border-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -137,22 +157,37 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             group.add(row);
         }
 
-        const color = new Adw.ActionRow({title: 'Cor'});
-        const button = new Gtk.ColorDialogButton({
-            valign: Gtk.Align.CENTER,
-            dialog: new Gtk.ColorDialog(),
-        });
-        const rgba = new Gdk.RGBA();
-        if (rgba.parse(settings.get_string('focus-border-color')))
+        for (const [key, title, fallback] of [
+            ['focus-border-color', 'Primeira cor', '#33d17a'],
+            ['focus-border-color2', 'Segunda cor', '#3584e4'],
+        ]) {
+            const row = new Adw.ActionRow({title});
+            const button = new Gtk.ColorDialogButton({
+                valign: Gtk.Align.CENTER,
+                dialog: new Gtk.ColorDialog(),
+            });
+            const rgba = new Gdk.RGBA();
+            if (!rgba.parse(settings.get_string(key)))
+                rgba.parse(fallback);
             button.rgba = rgba;
-        button.connect('notify::rgba', () => {
-            const c = button.rgba;
-            const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
-            settings.set_string('focus-border-color', `#${hex(c.red)}${hex(c.green)}${hex(c.blue)}`);
+            button.connect('notify::rgba', () => {
+                const c = button.rgba;
+                const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
+                settings.set_string(key, `#${hex(c.red)}${hex(c.green)}${hex(c.blue)}`);
+            });
+            row.add_suffix(button);
+            enabled.bind_property('active', row, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+            group.add(row);
+        }
+
+        const speed = new Adw.SpinRow({
+            title: 'Velocidade do gradiente',
+            subtitle: '0 = parado; 10 = muito rápido. Com as duas cores iguais não há movimento.',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 10, step_increment: 1}),
         });
-        color.add_suffix(button);
-        enabled.bind_property('active', color, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
-        group.add(color);
+        settings.bind('focus-border-speed', speed, 'value', Gio.SettingsBindFlags.DEFAULT);
+        enabled.bind_property('active', speed, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(speed);
 
         return group;
     }

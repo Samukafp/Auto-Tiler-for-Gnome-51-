@@ -43,6 +43,12 @@
 
 
 
+    <key name="limit-enabled" type="b">
+      <default>true</default>
+      <summary>Limitar janelas por workspace</summary>
+      <description>Se desactivado, não há limite: todas as janelas ficam no mesmo workspace.</description>
+    </key>
+
     <key name="max-windows" type="i">
       <default>4</default>
       <range min="1" max="12"/>
@@ -86,7 +92,20 @@
 
     <key name="focus-border-color" type="s">
       <default>'#33d17a'</default>
-      <summary>Cor da borda (hexadecimal)</summary>
+      <summary>Primeira cor da borda (hexadecimal)</summary>
+    </key>
+
+    <key name="focus-border-color2" type="s">
+      <default>'#3584e4'</default>
+      <summary>Segunda cor da borda (hexadecimal)</summary>
+      <description>A borda é um gradiente entre as duas cores. Se forem iguais, a borda tem uma cor só.</description>
+    </key>
+
+    <key name="focus-border-speed" type="i">
+      <default>4</default>
+      <range min="0" max="10"/>
+      <summary>Velocidade do gradiente</summary>
+      <description>0 = parado; 10 = muito rápido.</description>
     </key>
 
     <key name="toggle-float" type="as">
