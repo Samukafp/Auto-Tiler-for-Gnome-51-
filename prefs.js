@@ -16,9 +16,10 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         // Uma aba por assunto (o Adw mostra o seletor de abas no topo).
         const pages = [
             ['Geral', 'preferences-system-symbolic', [this._tilingGroup(settings), this._limitGroup(settings),
-                this._behaviourGroup(settings)]],
+                this._behaviourGroup(settings), this._focusResizeGroup(settings)]],
             ['Espaçamentos', 'view-grid-symbolic', [this._gapsGroup(settings)]],
             ['Borda', 'applications-graphics-symbolic', [this._appearanceGroup(settings)]],
+            ['Efeitos', 'applications-science-symbolic', [this._effectsGroup(settings)]],
             ['Janelas', 'window-new-symbolic', [this._floatingGroup(settings)]],
             ['Atalhos', 'input-keyboard-symbolic', [this._shortcutsGroup(settings)]],
         ];
@@ -28,6 +29,80 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                 page.add(group);
             window.add(page);
         }
+    }
+
+    _focusResizeGroup(settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Janela trazida durante fullscreen',
+            description: 'Com outra janela em fullscreen ou maximizada, uma janela que estava em tiling e é trazida ' +
+                '(por exemplo, pela barra de tarefas) aparece flutuante em 16:9, em tamanho normal. ' +
+                'Ao sair do fullscreen, tudo volta ao layout.',
+        });
+
+        const enabled = new Adw.SwitchRow({title: 'Mostrar em tamanho normal'});
+        settings.bind('focus-resize-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(enabled);
+
+        for (const [key, title, subtitle] of [
+            ['focus-resize-min', 'A partir de', 'Número mínimo de janelas abertas no workspace'],
+            ['focus-resize-max', 'Até', 'Número máximo de janelas abertas no workspace'],
+        ]) {
+            const row = new Adw.SpinRow({
+                title,
+                subtitle,
+                adjustment: new Gtk.Adjustment({lower: 1, upper: 12, step_increment: 1}),
+            });
+            settings.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+            enabled.bind_property('active', row, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+            group.add(row);
+        }
+
+        return group;
+    }
+
+    _effectsGroup(settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Extensões de efeitos',
+            description: '⚠ Não actives esta opção se não tiveres estas extensões instaladas. ' +
+                'Ligar e desligar extensões altera a lista de extensões activas do GNOME.',
+        });
+
+        const known = new Adw.ActionRow({
+            title: 'Extensões geridas por omissão',
+            subtitle: 'Compiz windows effect (compiz-windows-effect@hermes83.github.com)\n' +
+                'Compiz alike magic lamp effect (compiz-alike-magic-lamp-effect@hermes83.github.com)',
+        });
+        known.subtitle_lines = 0;
+        group.add(known);
+
+        const manage = new Adw.SwitchRow({
+            title: 'Desligar os efeitos enquanto o tiling está ligado',
+            subtitle: 'Com o tiling desligado, as extensões voltam a ligar-se',
+        });
+        settings.bind('manage-effect-extensions', manage, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(manage);
+
+        const fullscreen = new Adw.SwitchRow({
+            title: 'Ligar os efeitos em fullscreen',
+            subtitle: 'Mesmo com o tiling ligado, ligam-se quando uma janela entra em fullscreen e ' +
+                'desligam-se ao sair. Pode deixar o computador mais lento.',
+        });
+        settings.bind('effects-in-fullscreen', fullscreen, 'active', Gio.SettingsBindFlags.DEFAULT);
+        manage.bind_property('active', fullscreen, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(fullscreen);
+
+        const list = new Adw.EntryRow({
+            title: 'Extensões (UUIDs separados por vírgulas)',
+            show_apply_button: true,
+            text: settings.get_strv('effect-extensions').join(', '),
+        });
+        list.connect('apply', () => {
+            settings.set_strv('effect-extensions', list.text.split(',').map(s => s.trim()).filter(Boolean));
+        });
+        manage.bind_property('active', list, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(list);
+
+        return group;
     }
 
     _limitGroup(settings) {
@@ -179,6 +254,15 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             group.add(row);
         }
 
+        const wallpaper = new Adw.SwitchRow({
+            title: 'Cores do wallpaper',
+            subtitle: 'Usa tons do wallpaper actual, suavizados para ficarem sempre visíveis (um wallpaper preto dá cinza, não preto)',
+        });
+        settings.bind('focus-border-wallpaper', wallpaper, 'active', Gio.SettingsBindFlags.DEFAULT);
+        enabled.bind_property('active', wallpaper, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(wallpaper);
+
+        const manualRows = [];
         for (const [key, title, fallback] of [
             ['focus-border-color', 'Primeira cor', '#33d17a'],
             ['focus-border-color2', 'Segunda cor', '#3584e4'],
@@ -198,9 +282,17 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                 settings.set_string(key, `#${hex(c.red)}${hex(c.green)}${hex(c.blue)}`);
             });
             row.add_suffix(button);
-            enabled.bind_property('active', row, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+            manualRows.push(row);
             group.add(row);
         }
+        // As cores manuais só contam sem as do wallpaper.
+        const syncManual = () => {
+            for (const row of manualRows)
+                row.sensitive = enabled.active && !wallpaper.active;
+        };
+        enabled.connect('notify::active', syncManual);
+        wallpaper.connect('notify::active', syncManual);
+        syncManual();
 
         const speed = new Adw.SpinRow({
             title: 'Velocidade do gradiente',

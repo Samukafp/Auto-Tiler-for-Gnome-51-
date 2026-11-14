@@ -8,8 +8,10 @@ import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {EffectsController} from './lib/effects.js';
 import {TilerSettings} from './lib/settings.js';
 import {WindowManager} from './lib/window-manager.js';
+import {DropHint} from './ui/drop-hint.js';
 import {FocusBorder} from './ui/focus-border.js';
 import {QuickSettingsToggle} from './ui/quick-settings.js';
 import {RestoreLayoutButton} from './ui/restore-button.js';
@@ -19,17 +21,43 @@ export default class AutoTilerExtension extends Extension {
     enable() {
         this._settings = new TilerSettings(this.getSettings());
         this._animator = new WindowAnimator();
+        this._dropHint = null;
         this._manager = new WindowManager(this._createHost(), this._settings);
         console.log(`[auto-tiler] v${this.metadata['version-name']} activada; tiling=${this._settings.tilingEnabled}, ` +
             `limite=${this._settings.maxWindows}`);
         this._manager.enable();
 
+        // Extensões de efeitos (Compiz): geridas conforme o tiling e o fullscreen.
+        this._effects = new EffectsController({
+            isInstalled: uuid => Boolean(Main.extensionManager.lookup(uuid)),
+            setEnabled: (uuid, on) => (on
+                ? Main.extensionManager.enableExtension(uuid)
+                : Main.extensionManager.disableExtension(uuid)),
+            log: message => console.log('[auto-tiler]', message),
+            logError: error => console.error('[auto-tiler]', error),
+        }, this._settings, () => this._manager?.hasFullscreen() ?? false);
+        this._unsubscribeEffects = this._manager.onStateChanged(() => this._effects?.sync());
+        this._effectsChangedId = this._settings.gsettings.connect('changed', () => this._effects?.sync());
+        // O Shell avisa directamente quando um monitor entra/sai de fullscreen.
+        this._fullscreenId = global.display.connect('in-fullscreen-changed', () => this._syncEffectsLater());
+        this._effectsIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._effectsIdle = 0;
+            this._effects?.sync();
+            return GLib.SOURCE_REMOVE;
+        });
+
         // Cada peça de interface é independente: se uma falhar, as outras continuam.
         this._ui = [];
         for (const create of [
-            () => new QuickSettingsToggle(this._settings.gsettings),
+            () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
             () => new FocusBorder(this._settings),
+            () => {
+                const border = this._ui.find(piece => piece instanceof FocusBorder);
+                this._dropHint = new DropHint(this._settings, () => border?.colors() ??
+                    {c1: this._settings.focusBorderColor});
+                return this._dropHint;
+            },
         ]) {
             try {
                 this._ui.push(create());
@@ -49,6 +77,18 @@ export default class AutoTilerExtension extends Extension {
         bind('toggle-tiling', () => this._manager?.toggleTiling());
     }
 
+    /** Depois do Shell actualizar o estado dos monitores (o seu handler corre antes do nosso idle). */
+    _syncEffectsLater() {
+        if (this._effectsIdle)
+            return;
+        this._effectsIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._effectsIdle = 0;
+            this._manager?._notifyState();
+            this._effects?.sync();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     // Em GNOME Shell 51 disable() não pode ser assíncrona.
     disable() {
         Main.wm.removeKeybinding('toggle-float');
@@ -63,6 +103,23 @@ export default class AutoTilerExtension extends Extension {
             }
         }
         this._ui = null;
+        this._dropHint = null;
+
+        if (this._fullscreenId)
+            global.display.disconnect(this._fullscreenId);
+        this._fullscreenId = 0;
+        if (this._effectsIdle)
+            GLib.Source.remove(this._effectsIdle);
+        this._effectsIdle = 0;
+        if (this._effectsChangedId)
+            this._settings?.gsettings.disconnect(this._effectsChangedId);
+        this._effectsChangedId = 0;
+        this._unsubscribeEffects?.();
+        this._unsubscribeEffects = null;
+        // Só quando o utilizador desliga a extensão (não ao bloquear o ecrã / terminar a sessão).
+        if (Main.sessionMode.currentMode === 'user')
+            this._effects?.restore();
+        this._effects = null;
 
         this._manager?.destroy();
         this._manager = null;
@@ -95,6 +152,9 @@ export default class AutoTilerExtension extends Extension {
                     manager.append_new_workspace(false, global.get_current_time());
                 win.change_workspace_by_index(index, false);
             },
+            inFullscreen: () => Main.layoutManager.monitors.some(m => m.inFullscreen),
+            showDropHint: rect => this._dropHint?.show(rect),
+            hideDropHint: () => this._dropHint?.hide(),
             // Há um arrasto/redimensionamento do utilizador a decorrer?
             grabActive: () => global.display.get_grab_op() !== Meta.GrabOp.NONE,
             pointer: () => {

@@ -68,9 +68,44 @@
     </key>
 
     <key name="animation-duration" type="i">
-      <default>180</default>
+      <default>280</default>
       <range min="50" max="600"/>
       <summary>Duração das animações (ms)</summary>
+    </key>
+
+    <key name="focus-resize-enabled" type="b">
+      <default>true</default>
+      <summary>Janela trazida durante fullscreen em tamanho normal</summary>
+      <description>Com outra janela em fullscreen ou maximizada, uma janela que estava em tiling e é trazida (por exemplo, pela barra de tarefas) aparece flutuante em 16:9 de tamanho normal.</description>
+    </key>
+
+    <key name="focus-resize-min" type="i">
+      <default>2</default>
+      <range min="1" max="12"/>
+      <summary>Número mínimo de janelas para isto acontecer</summary>
+    </key>
+
+    <key name="focus-resize-max" type="i">
+      <default>12</default>
+      <range min="1" max="12"/>
+      <summary>Número máximo de janelas para isto acontecer</summary>
+    </key>
+
+    <key name="manage-effect-extensions" type="b">
+      <default>false</default>
+      <summary>Gerir extensões de efeitos</summary>
+      <description>Desliga as extensões de efeitos (por omissão Compiz) com o tiling ligado e volta a ligá-las com o tiling desligado.</description>
+    </key>
+
+    <key name="effects-in-fullscreen" type="b">
+      <default>false</default>
+      <summary>Ligar os efeitos enquanto há uma janela em fullscreen</summary>
+      <description>Mesmo com o tiling ligado, as extensões de efeitos ligam-se quando uma janela entra em fullscreen e desligam-se ao sair.</description>
+    </key>
+
+    <key name="effect-extensions" type="as">
+      <default>['compiz-windows-effect@hermes83.github.com', 'compiz-alike-magic-lamp-effect@hermes83.github.com']</default>
+      <summary>UUIDs das extensões de efeitos</summary>
     </key>
 
     <key name="smart-gaps" type="b">
@@ -105,6 +140,12 @@
       <default>12</default>
       <range min="0" max="32"/>
       <summary>Arredondamento da borda (px)</summary>
+    </key>
+
+    <key name="focus-border-wallpaper" type="b">
+      <default>true</default>
+      <summary>Cores da borda a partir do wallpaper</summary>
+      <description>As cores são tiradas do wallpaper actual e suavizadas (nunca pretas nem brancas). As cores escolhidas à mão ficam como alternativa.</description>
     </key>
 
     <key name="focus-border-color" type="s">

@@ -10,6 +10,7 @@ import Meta from 'gi://Meta';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {WallpaperColors} from './wallpaper-colors.js';
 import {gradientAt, parseColor, perimeterPoints, phaseAt} from '../lib/border-path.js';
 
 const FRAME_MS = 33;
@@ -26,6 +27,7 @@ export class FocusBorder {
         this._actorSignals = [];
         this._displaySignals = [];
         this._timerId = 0;
+        this._wallpaper = new WallpaperColors(() => this._update());
         this._points = null;
         this._pointsKey = '';
 
@@ -124,9 +126,15 @@ export class FocusBorder {
         }
     }
 
+    /** Cores efectivas: do wallpaper (se activado e disponível) ou as escolhidas à mão. */
+    colors() {
+        const wall = this._settings.focusBorderWallpaper ? this._wallpaper?.colors : null;
+        return wall ?? {c1: this._settings.focusBorderColor, c2: this._settings.focusBorderColor2};
+    }
+
     _syncTimer() {
-        const animated = this._settings.focusBorderSpeed > 0 &&
-            this._settings.focusBorderColor !== this._settings.focusBorderColor2;
+        const {c1, c2} = this.colors();
+        const animated = this._settings.focusBorderSpeed > 0 && c1 !== c2;
         if (!animated) {
             this._stopTimer();
             return;
@@ -160,8 +168,9 @@ export class FocusBorder {
                 this._points = perimeterPoints(width - lw, height - lw, radius);
                 this._pointsKey = key;
             }
-            const c1 = parseColor(this._settings.focusBorderColor);
-            const c2 = parseColor(this._settings.focusBorderColor2);
+            const colors = this.colors();
+            const c1 = parseColor(colors.c1);
+            const c2 = parseColor(colors.c2);
             const phase = phaseAt(GLib.get_monotonic_time() / 1000, this._settings.focusBorderSpeed);
             const pts = this._points;
             const n = pts.length;
@@ -188,6 +197,8 @@ export class FocusBorder {
 
     destroy() {
         this._stopTimer();
+        this._wallpaper?.destroy();
+        this._wallpaper = null;
         if (this._changedId)
             this._settings.gsettings.disconnect(this._changedId);
         this._changedId = 0;

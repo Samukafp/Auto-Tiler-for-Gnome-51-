@@ -5,12 +5,26 @@ import GObject from 'gi://GObject';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {QuickToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
+const FALLBACK_ICON = 'view-dual-symbolic';
+
+/** Ícone próprio da extensão (icons/auto-tiler-symbolic.svg); se faltar, um ícone do tema. */
+function loadIcon(extensionPath) {
+    try {
+        const file = Gio.File.new_for_path(`${extensionPath}/icons/auto-tiler-symbolic.svg`);
+        if (file.query_exists(null))
+            return new Gio.FileIcon({file});
+    } catch {
+        // cai no ícone do tema
+    }
+    return new Gio.ThemedIcon({name: FALLBACK_ICON});
+}
+
 const TilingToggle = GObject.registerClass(
 class AutoTilerToggle extends QuickToggle {
-    constructor(gsettings) {
+    constructor(gsettings, icon) {
         super({
             title: 'Tiling',
-            iconName: 'view-grid-symbolic',
+            gicon: icon,
             toggleMode: true,
         });
         this._gsettings = gsettings;
@@ -33,9 +47,13 @@ class AutoTilerToggle extends QuickToggle {
 
 const TilingIndicator = GObject.registerClass(
 class AutoTilerIndicator extends SystemIndicator {
-    constructor(gsettings) {
+    constructor(gsettings, icon) {
         super();
-        this.quickSettingsItems.push(new TilingToggle(gsettings));
+        // Ícone na barra superior (junto ao volume, rede, etc.) enquanto o tiling está ligado.
+        this._indicator = this._addIndicator();
+        this._indicator.gicon = icon;
+        gsettings.bind('tiling-enabled', this._indicator, 'visible', Gio.SettingsBindFlags.GET);
+        this.quickSettingsItems.push(new TilingToggle(gsettings, icon));
     }
 
     destroy() {
@@ -47,8 +65,8 @@ class AutoTilerIndicator extends SystemIndicator {
 });
 
 export class QuickSettingsToggle {
-    constructor(gsettings) {
-        this._indicator = new TilingIndicator(gsettings);
+    constructor(gsettings, extensionPath) {
+        this._indicator = new TilingIndicator(gsettings, loadIcon(extensionPath));
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 
