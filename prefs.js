@@ -127,12 +127,34 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('swap-on-drag', swap, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(swap);
 
+        const smart = new Adw.SwitchRow({
+            title: 'Sem espaçamentos com uma só janela',
+            subtitle: 'Uma janela sozinha ocupa toda a área útil (não é maximizada)',
+        });
+        settings.bind('smart-gaps', smart, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(smart);
+
+        const restoreBtn = new Adw.SwitchRow({
+            title: 'Botão de restaurar na barra',
+            subtitle: 'Aparece só quando há alterações manuais ao layout',
+        });
+        settings.bind('show-restore-button', restoreBtn, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(restoreBtn);
+
         const anim = new Adw.SwitchRow({
             title: 'Animações',
             subtitle: 'Respeita também a definição de animações do GNOME',
         });
         settings.bind('animations-enabled', anim, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(anim);
+
+        const duration = new Adw.SpinRow({
+            title: 'Duração das animações (ms)',
+            adjustment: new Gtk.Adjustment({lower: 50, upper: 600, step_increment: 10}),
+        });
+        settings.bind('animation-duration', duration, 'value', Gio.SettingsBindFlags.DEFAULT);
+        anim.bind_property('active', duration, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(duration);
 
         return group;
     }
@@ -221,6 +243,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         for (const [key, title] of [
             ['toggle-float', 'Alternar janela flutuante / em tiling'],
             ['toggle-tiling', 'Activar / desactivar o tiling'],
+            ['restore-layout', 'Restaurar a organização original (vazio = sem atalho)'],
         ]) {
             const row = new Adw.EntryRow({
                 title,

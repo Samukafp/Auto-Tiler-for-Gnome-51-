@@ -2,9 +2,8 @@
 // janela: nunca a altera, por isso não interfere com o tiling, a maximização nem o
 // fullscreen.
 //
-// A borda acompanha o actor da janela (opacidade, escala e translação), por isso
-// aparece e desaparece em conjunto com as animações de abrir/fechar/mover em vez
-// de ficar sozinha no ecrã.
+// A borda só aparece quando a janela já está totalmente visível (acabou a animação
+// de abrir/mover) e some logo que a janela começa a fechar.
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -55,7 +54,7 @@ export class FocusBorder {
             if (actor) {
                 this._actor = actor;
                 for (const prop of MIRROR_PROPS)
-                    this._actorSignals.push(actor.connect(`notify::${prop}`, () => this._mirror()));
+                    this._actorSignals.push(actor.connect(`notify::${prop}`, () => this._update()));
                 this._actorSignals.push(actor.connect('destroy', () => {
                     this._actor = null;
                     this._actorSignals = [];
@@ -91,39 +90,18 @@ export class FocusBorder {
         this._actor = null;
     }
 
-    /** Copia a animação do actor da janela (opacidade/escala/translação) para a borda. */
-    _mirror() {
-        const actor = this._actor;
-        const area = this._area;
-        if (!actor || !area || !area.visible)
-            return;
-        try {
-            // O ponto fixo da transformação do actor, em coordenadas do ecrã.
-            const [pivotX, pivotY] = actor.get_pivot_point();
-            const px = actor.x + pivotX * actor.width;
-            const py = actor.y + pivotY * actor.height;
-            const w = area.width || 1;
-            const h = area.height || 1;
-            area.set_pivot_point((px - area.x) / w, (py - area.y) / h);
-            area.set({
-                opacity: actor.opacity,
-                scale_x: actor.scale_x,
-                scale_y: actor.scale_y,
-                translation_x: actor.translation_x,
-                translation_y: actor.translation_y,
-            });
-            if (!actor.visible)
-                area.hide();
-        } catch {
-            // o actor pode estar a ser destruído
-        }
+    /** A janela já terminou de animar (aparece inteira, sem escala nem deslocamento)? */
+    _settled(actor) {
+        return actor.visible && actor.opacity >= 255 &&
+            Math.abs(actor.scale_x - 1) < 0.001 && Math.abs(actor.scale_y - 1) < 0.001 &&
+            Math.abs(actor.translation_x) < 0.5 && Math.abs(actor.translation_y) < 0.5;
     }
 
     _update() {
         const win = this._win;
         try {
             const actor = this._actor;
-            const show = this._settings.focusBorderEnabled && win && actor && actor.visible &&
+            const show = this._settings.focusBorderEnabled && win && actor && this._settled(actor) &&
                 !Main.overview.visible && win.get_window_type() === Meta.WindowType.NORMAL &&
                 !win.minimized && !win.is_fullscreen() &&
                 !win.maximized_horizontally && !win.maximized_vertically;
@@ -138,7 +116,6 @@ export class FocusBorder {
             this._area.set_size(rect.width + 2 * w, rect.height + 2 * w);
             global.window_group.set_child_above_sibling(this._area, actor);
             this._area.show();
-            this._mirror();
             this._area.queue_repaint();
             this._syncTimer();
         } catch {

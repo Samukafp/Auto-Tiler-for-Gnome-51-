@@ -86,14 +86,28 @@ export class RestoreLayoutButton {
     /**
      * @param {object} manager WindowManager (hasManualChanges, restoreLayout, onStateChanged)
      */
-    constructor(manager) {
+    constructor(manager, settings) {
+        this._manager = manager;
+        this._settings = settings;
+        this._manual = manager.hasManualChanges();
         this._button = new RestoreButton(() => manager.restoreLayout());
         Main.panel.addToStatusArea('auto-tiler-restore', this._button, 0, 'right');
-        this._button.setActive(manager.hasManualChanges());
-        this._unsubscribe = manager.onStateChanged(state => this._button?.setActive(state.manualChanges));
+        this._refresh();
+        this._unsubscribe = manager.onStateChanged(state => {
+            this._manual = state.manualChanges;
+            this._refresh();
+        });
+        this._changedId = settings.gsettings.connect('changed::show-restore-button', () => this._refresh());
+    }
+
+    _refresh() {
+        this._button?.setActive(this._manual && this._settings.showRestoreButton);
     }
 
     destroy() {
+        if (this._changedId)
+            this._settings.gsettings.disconnect(this._changedId);
+        this._changedId = 0;
         this._unsubscribe?.();
         this._unsubscribe = null;
         this._button?.destroy();

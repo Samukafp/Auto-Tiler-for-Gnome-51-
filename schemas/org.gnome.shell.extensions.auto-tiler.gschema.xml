@@ -67,6 +67,23 @@
       <description>Transições curtas quando as janelas mudam de posição ou tamanho. Respeita as animações do GNOME.</description>
     </key>
 
+    <key name="animation-duration" type="i">
+      <default>180</default>
+      <range min="50" max="600"/>
+      <summary>Duração das animações (ms)</summary>
+    </key>
+
+    <key name="smart-gaps" type="b">
+      <default>false</default>
+      <summary>Sem espaçamentos com uma só janela</summary>
+      <description>Quando só há uma janela em tiling, ocupa toda a área útil sem espaçamentos.</description>
+    </key>
+
+    <key name="show-restore-button" type="b">
+      <default>true</default>
+      <summary>Mostrar o botão de restaurar na barra</summary>
+    </key>
+
     <key name="unmaximize-on-open" type="b">
       <default>true</default>
       <summary>Desmaximizar janelas que abrem maximizadas</summary>
@@ -111,6 +128,11 @@
     <key name="toggle-float" type="as">
       <default>['&lt;Super&gt;f']</default>
       <summary>Alternar janela flutuante / em tiling</summary>
+    </key>
+
+    <key name="restore-layout" type="as">
+      <default>[]</default>
+      <summary>Restaurar a organização original do workspace</summary>
     </key>
 
     <key name="toggle-tiling" type="as">

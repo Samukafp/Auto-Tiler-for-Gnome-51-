@@ -28,7 +28,7 @@ export default class AutoTilerExtension extends Extension {
         this._ui = [];
         for (const create of [
             () => new QuickSettingsToggle(this._settings.gsettings),
-            () => new RestoreLayoutButton(this._manager),
+            () => new RestoreLayoutButton(this._manager, this._settings),
             () => new FocusBorder(this._settings),
         ]) {
             try {
@@ -45,6 +45,7 @@ export default class AutoTilerExtension extends Extension {
             Shell.ActionMode.NORMAL,
             handler);
         bind('toggle-float', () => this._manager?.toggleFloat());
+        bind('restore-layout', () => this._manager?.restoreLayout());
         bind('toggle-tiling', () => this._manager?.toggleTiling());
     }
 
@@ -52,6 +53,7 @@ export default class AutoTilerExtension extends Extension {
     disable() {
         Main.wm.removeKeybinding('toggle-float');
         Main.wm.removeKeybinding('toggle-tiling');
+        Main.wm.removeKeybinding('restore-layout');
 
         for (const piece of this._ui ?? []) {
             try {
