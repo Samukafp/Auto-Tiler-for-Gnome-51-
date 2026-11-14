@@ -18,50 +18,27 @@ Auto Tiler is already usable but may contain bugs or unexpected behaviour. New f
 
 ## Installation
 
-Open a terminal and run the following commands:
+Make sure Git is installed, then open a terminal and run:
 
 ```bash
-REPO="https://github.com/Samukafp/Auto-Tiler-for-Gnome-51-.git"
-TMP_DIR="$(mktemp -d)"
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions/auto-tiler@local"
 
-git clone "$REPO" "$TMP_DIR/auto-tiler"
+git clone https://github.com/Samukafp/Auto-Tiler-for-Gnome-51-.git "$EXT_DIR"
 
-UUID="$(python3 -c 'import json; print(json.load(open("'"$TMP_DIR"'/auto-tiler/metadata.json"))["uuid"])')"
-
-mkdir -p "$HOME/.local/share/gnome-shell/extensions"
-
-mv "$TMP_DIR/auto-tiler" "$HOME/.local/share/gnome-shell/extensions/$UUID"
-
-rm -rf "$TMP_DIR"
-
-gnome-extensions enable "$UUID"
+gnome-extensions enable auto-tiler@local
 ```
 
-The installation automatically reads the extension UUID from `metadata.json` and places the extension in the correct directory.
-
-No manual UUID configuration is required.
+After installation, log out and log back in to ensure the extension loads correctly.
 
 ## Updating
 
 To update Auto Tiler to the latest version, run:
 
 ```bash
-REPO="https://github.com/Samukafp/Auto-Tiler-for-Gnome-51-.git"
-EXTENSIONS_DIR="$HOME/.local/share/gnome-shell/extensions"
-
-for DIR in "$EXTENSIONS_DIR"/*; do
-    [ -d "$DIR/.git" ] || continue
-
-    if [ "$(git -C "$DIR" remote get-url origin 2>/dev/null)" = "$REPO" ]; then
-        git -C "$DIR" pull --ff-only
-        break
-    fi
-done
+git -C "$HOME/.local/share/gnome-shell/extensions/auto-tiler@local" pull --ff-only
 ```
 
-This automatically locates the installed extension by its Git repository and downloads the latest changes.
-
-If the extension does not reload automatically, log out and log back in.
+If GNOME Shell does not reload the changes automatically, log out and log back in.
 
 ## Compatibility
 
@@ -78,4 +55,4 @@ Feel free to open an issue or submit a pull request.
 
 ## License
 
-No license has been specified yet.
+No license file is currently provided.
