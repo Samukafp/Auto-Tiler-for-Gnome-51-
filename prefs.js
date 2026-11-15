@@ -187,6 +187,15 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             title: 'Comportamento',
         });
 
+        const size = new Adw.SpinRow({
+            title: 'Tamanho das janelas normais (%)',
+            subtitle: 'Largura em % do ecrã (proporção 16:10) das janelas libertadas ao desligar o tiling ' +
+                'ou trazidas durante um fullscreen',
+            adjustment: new Gtk.Adjustment({lower: 25, upper: 70, step_increment: 1}),
+        });
+        settings.bind('normal-window-size', size, 'value', Gio.SettingsBindFlags.DEFAULT);
+        group.add(size);
+
         const unmax = new Adw.SwitchRow({
             title: 'Janelas novas entram em tiling',
             subtitle: 'Se uma aplicação abrir maximizada, é desmaximizada uma só vez ao abrir. ' +
@@ -208,6 +217,30 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         });
         settings.bind('smart-gaps', smart, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(smart);
+
+        const sideRow = new Adw.ComboRow({
+            title: 'Lado onde as janelas novas abrem',
+            subtitle: 'As janelas novas entram à direita ou à esquerda das que já existem',
+            model: Gtk.StringList.new(['Direita', 'Esquerda']),
+        });
+        sideRow.selected = settings.get_string('open-side') === 'left' ? 1 : 0;
+        sideRow.connect('notify::selected', () =>
+            settings.set_string('open-side', sideRow.selected === 1 ? 'left' : 'right'));
+        group.add(sideRow);
+
+        const onTop = new Adw.SwitchRow({
+            title: 'Janelas flutuantes sempre à frente',
+            subtitle: 'Ficam por cima das janelas em tiling, mesmo ao abrir ou mexer numa delas',
+        });
+        settings.bind('floating-on-top', onTop, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(onTop);
+
+        const wsNumbers = new Adw.SwitchRow({
+            title: 'Números de workspace na barra',
+            subtitle: 'Estilo Hyprland: 1 2 3 com o activo realçado, em vez dos pontos do GNOME',
+        });
+        settings.bind('workspace-numbers', wsNumbers, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(wsNumbers);
 
         const restoreBtn = new Adw.SwitchRow({
             title: 'Botão de restaurar na barra',
@@ -309,8 +342,15 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     _floatingGroup(settings) {
         const group = new Adw.PreferencesGroup({
             title: 'Janelas flutuantes',
-            description: 'Diálogos e janelas transitórias são sempre flutuantes.',
+            description: 'Diálogos, janelas transitórias, avisos do sistema e as definições de extensões são sempre flutuantes.',
         });
+
+        const video = new Adw.SwitchRow({
+            title: 'Tiling em reprodutores de vídeo',
+            subtitle: 'Desligado: Celluloid, VLC, mpv, Totem e semelhantes abrem como janelas flutuantes',
+        });
+        settings.bind('tile-video-players', video, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(video);
 
         const classes = new Adw.EntryRow({
             title: 'Aplicações flutuantes (WM_CLASS / app-id, separados por vírgulas)',

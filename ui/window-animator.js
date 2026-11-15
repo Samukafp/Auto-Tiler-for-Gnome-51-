@@ -26,10 +26,28 @@ export class WindowAnimator {
         if (!actor || to.width <= 0 || to.height <= 0)
             return;
 
-        this.cancel(win);
+        // Se já havia uma animação a meio, continua a partir de onde a janela VAI no
+        // ecrã (em vez de saltar para o fim e recomeçar): é o que evita os "solavancos"
+        // quando o layout muda várias vezes seguidas.
+        const previous = this._running.get(win);
+        if (previous && previous.actor === actor) {
+            from = {
+                x: previous.to.x + actor.translation_x,
+                y: previous.to.y + actor.translation_y,
+                width: previous.to.width * actor.scale_x,
+                height: previous.to.height * actor.scale_y,
+            };
+            actor.disconnect(previous.destroyId);
+            actor.remove_all_transitions();
+            this._running.delete(win);
+            if (previous.fade)
+                actor.opacity = 255; // o fade da animação anterior não pode ficar a meio
+        } else {
+            this.cancel(win);
+        }
 
         const destroyId = actor.connect('destroy', () => this._running.delete(win));
-        this._running.set(win, {actor, destroyId, fade});
+        this._running.set(win, {actor, destroyId, fade, to: {...to}});
 
         // O pivô fica no canto superior esquerdo do actor.
         actor.set_pivot_point(0, 0);
@@ -47,11 +65,11 @@ export class WindowAnimator {
             scale_x: 1,
             scale_y: 1,
             duration: ms,
-            mode: Clutter.AnimationMode.EASE_OUT_QUART,
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             onStopped: () => this._finish(win),
         };
         if (fade) {
-            actor.opacity = 120;
+            actor.opacity = fade === true ? 120 : fade;
             target.opacity = 255;
         }
         actor.ease(target);

@@ -43,6 +43,19 @@
 
 
 
+    <key name="normal-window-size" type="i">
+      <default>45</default>
+      <range min="25" max="70"/>
+      <summary>Tamanho das janelas "normais" (% da largura)</summary>
+      <description>Largura, em percentagem do ecrã, das janelas 16:10 usadas ao desligar o tiling e ao trazer uma janela durante um fullscreen.</description>
+    </key>
+
+    <key name="tile-video-players" type="b">
+      <default>false</default>
+      <summary>Tiling em reprodutores de vídeo</summary>
+      <description>Se desactivado, reprodutores como Celluloid, VLC ou mpv abrem como janelas flutuantes.</description>
+    </key>
+
     <key name="limit-enabled" type="b">
       <default>true</default>
       <summary>Limitar janelas por workspace</summary>
@@ -68,7 +81,7 @@
     </key>
 
     <key name="animation-duration" type="i">
-      <default>280</default>
+      <default>320</default>
       <range min="50" max="600"/>
       <summary>Duração das animações (ms)</summary>
     </key>
@@ -106,6 +119,24 @@
     <key name="effect-extensions" type="as">
       <default>['compiz-windows-effect@hermes83.github.com', 'compiz-alike-magic-lamp-effect@hermes83.github.com']</default>
       <summary>UUIDs das extensões de efeitos</summary>
+    </key>
+
+    <key name="open-side" type="s">
+      <default>'right'</default>
+      <summary>Lado onde as janelas novas abrem</summary>
+      <description>'right': as janelas novas entram à direita do tiling; 'left': à esquerda.</description>
+    </key>
+
+    <key name="workspace-numbers" type="b">
+      <default>true</default>
+      <summary>Números de workspace na barra</summary>
+      <description>Mostra os números dos workspaces (o activo realçado) em vez dos pontos do GNOME.</description>
+    </key>
+
+    <key name="floating-on-top" type="b">
+      <default>true</default>
+      <summary>Janelas flutuantes sempre à frente</summary>
+      <description>As janelas flutuantes ficam por cima das janelas em tiling, mesmo ao abrir ou mexer numa janela em tiling.</description>
     </key>
 
     <key name="smart-gaps" type="b">

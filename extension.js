@@ -15,6 +15,7 @@ import {DropHint} from './ui/drop-hint.js';
 import {FocusBorder} from './ui/focus-border.js';
 import {QuickSettingsToggle} from './ui/quick-settings.js';
 import {RestoreLayoutButton} from './ui/restore-button.js';
+import {WorkspaceNumbers} from './ui/workspace-numbers.js';
 import {WindowAnimator} from './ui/window-animator.js';
 
 export default class AutoTilerExtension extends Extension {
@@ -25,11 +26,13 @@ export default class AutoTilerExtension extends Extension {
         this._manager = new WindowManager(this._createHost(), this._settings);
         console.log(`[auto-tiler] v${this.metadata['version-name']} activada; tiling=${this._settings.tilingEnabled}, ` +
             `limite=${this._settings.maxWindows}`);
-        this._manager.enable();
+        this._manager.enable(this._savedOrder ?? []);
 
         // Extensões de efeitos (Compiz): geridas conforme o tiling e o fullscreen.
         this._effects = new EffectsController({
             isInstalled: uuid => Boolean(Main.extensionManager.lookup(uuid)),
+            // ExtensionState.ENABLED === 1
+            isEnabled: uuid => Main.extensionManager.lookup(uuid)?.state === 1,
             setEnabled: (uuid, on) => (on
                 ? Main.extensionManager.enableExtension(uuid)
                 : Main.extensionManager.disableExtension(uuid)),
@@ -51,6 +54,7 @@ export default class AutoTilerExtension extends Extension {
         for (const create of [
             () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
+            () => new WorkspaceNumbers(this._settings),
             () => new FocusBorder(this._settings),
             () => {
                 const border = this._ui.find(piece => piece instanceof FocusBorder);
@@ -121,6 +125,7 @@ export default class AutoTilerExtension extends Extension {
             this._effects?.restore();
         this._effects = null;
 
+        this._savedOrder = this._manager?.exportOrder() ?? this._savedOrder;
         this._manager?.destroy();
         this._manager = null;
         this._animator?.cancelAll();

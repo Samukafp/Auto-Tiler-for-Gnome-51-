@@ -14,6 +14,8 @@ import {WallpaperColors} from './wallpaper-colors.js';
 import {gradientAt, parseColor, perimeterPoints, phaseAt} from '../lib/border-path.js';
 
 const FRAME_MS = 33;
+// Tempo mínimo desde o 'map' da janela antes de mostrar a borda: cobre a animação de abrir do Shell.
+const MAP_SETTLE_MS = 450;
 const MIRROR_PROPS = ['visible', 'opacity', 'scale-x', 'scale-y', 'translation-x', 'translation-y'];
 
 export class FocusBorder {
@@ -23,6 +25,8 @@ export class FocusBorder {
         this._area.connect('repaint', area => this._paint(area));
         this._win = null;
         this._actor = null;
+        this._mapTimes = new Map(); // meta_window -> instante do 'map'
+        this._settleSource = 0;
         this._winSignals = [];
         this._actorSignals = [];
         this._displaySignals = [];
@@ -33,10 +37,28 @@ export class FocusBorder {
 
         global.window_group.add_child(this._area);
         this._displaySignals.push(global.display.connect('notify::focus-window', () => this._follow()));
+        // Menus e pop-ups da janela ficam POR CIMA dela: a borda tem de ficar logo acima da
+        // janela e abaixo deles, também depois de qualquer reordenação das janelas.
+        this._displaySignals.push(global.display.connect('restacked', () => this._restack()));
+        this._mapId = global.window_manager.connect('map', (_wm, actor) => {
+            const meta = actor.meta_window;
+            if (meta)
+                this._mapTimes.set(meta, GLib.get_monotonic_time() / 1000);
+            this._update();
+        });
         this._displaySignals.push(Main.overview.connect('showing', () => this._update()));
         this._displaySignals.push(Main.overview.connect('hidden', () => this._update()));
         this._changedId = settings.gsettings.connect('changed', () => this._update());
         this._follow();
+    }
+
+    _restack() {
+        try {
+            if (this._area?.visible && this._actor)
+                global.window_group.set_child_above_sibling(this._area, this._actor);
+        } catch {
+            // actor a ser destruído
+        }
     }
 
     _follow() {
@@ -99,12 +121,39 @@ export class FocusBorder {
             Math.abs(actor.translation_x) < 0.5 && Math.abs(actor.translation_y) < 0.5;
     }
 
+    /** Milissegundos que faltam para a animação de abrir da janela terminar (0 = já terminou). */
+    _settleRemaining(win) {
+        const mapped = this._mapTimes.get(win);
+        if (mapped === undefined)
+            return 0;
+        const left = MAP_SETTLE_MS - (GLib.get_monotonic_time() / 1000 - mapped);
+        if (left <= 0) {
+            this._mapTimes.delete(win);
+            return 0;
+        }
+        return left;
+    }
+
     _update() {
         const win = this._win;
         try {
+            const left = win ? this._settleRemaining(win) : 0;
+            if (left > 0) {
+                // Janela a abrir: a borda espera, e volta a tentar quando a animação acabar.
+                this._area.hide();
+                this._stopTimer();
+                if (!this._settleSource) {
+                    this._settleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.ceil(left) + 20, () => {
+                        this._settleSource = 0;
+                        this._update();
+                        return GLib.SOURCE_REMOVE;
+                    });
+                }
+                return;
+            }
             const actor = this._actor;
             const show = this._settings.focusBorderEnabled && win && actor && this._settled(actor) &&
-                !Main.overview.visible && win.get_window_type() === Meta.WindowType.NORMAL &&
+                !Main.overview.visible && [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG].includes(win.get_window_type()) &&
                 !win.minimized && !win.is_fullscreen() &&
                 !win.maximized_horizontally && !win.maximized_vertically;
             if (!show) {
@@ -197,6 +246,13 @@ export class FocusBorder {
 
     destroy() {
         this._stopTimer();
+        if (this._settleSource)
+            GLib.Source.remove(this._settleSource);
+        this._settleSource = 0;
+        if (this._mapId)
+            global.window_manager.disconnect(this._mapId);
+        this._mapId = 0;
+        this._mapTimes.clear();
         this._wallpaper?.destroy();
         this._wallpaper = null;
         if (this._changedId)
