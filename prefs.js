@@ -43,6 +43,13 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('focus-resize-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(enabled);
 
+        const hideOff = new Adw.SwitchRow({
+            title: 'Esconder a borda com o tiling desligado',
+            subtitle: 'A borda só aparece enquanto o tiling está activo',
+        });
+        settings.bind('focus-border-hide-when-tiling-off', hideOff, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(hideOff);
+
         for (const [key, title, subtitle] of [
             ['focus-resize-min', 'A partir de', 'Número mínimo de janelas abertas no workspace'],
             ['focus-resize-max', 'Até', 'Número máximo de janelas abertas no workspace'],
@@ -376,6 +383,12 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             ['toggle-float', 'Alternar janela flutuante / em tiling'],
             ['toggle-tiling', 'Activar / desactivar o tiling'],
             ['restore-layout', 'Restaurar a organização original (vazio = sem atalho)'],
+            ['swap-left', 'Trocar a janela com a da esquerda'],
+            ['swap-right', 'Trocar a janela com a da direita'],
+            ['swap-up', 'Trocar a janela com a de cima'],
+            ['swap-down', 'Trocar a janela com a de baixo'],
+            ['focus-next', 'Alternar o foco entre as janelas em tiling'],
+            ['toggle-pin', 'Fixar / desafixar a janela em todos os workspaces'],
         ]) {
             const row = new Adw.EntryRow({
                 title,

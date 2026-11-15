@@ -27,6 +27,10 @@ export default class AutoTilerExtension extends Extension {
         console.log(`[auto-tiler] v${this.metadata['version-name']} activada; tiling=${this._settings.tilingEnabled}, ` +
             `limite=${this._settings.maxWindows}`);
         this._manager.enable(this._savedOrder ?? []);
+        this._healId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._manager?.heal();
+            return GLib.SOURCE_CONTINUE;
+        });
 
         // Extensões de efeitos (Compiz): geridas conforme o tiling e o fullscreen.
         this._effects = new EffectsController({
@@ -79,6 +83,10 @@ export default class AutoTilerExtension extends Extension {
         bind('toggle-float', () => this._manager?.toggleFloat());
         bind('restore-layout', () => this._manager?.restoreLayout());
         bind('toggle-tiling', () => this._manager?.toggleTiling());
+        for (const dir of ['left', 'right', 'up', 'down'])
+            bind(`swap-${dir}`, () => this._manager?.swapDirection(dir));
+        bind('focus-next', () => this._manager?.focusNext());
+        bind('toggle-pin', () => this._manager?.togglePin());
     }
 
     /** Depois do Shell actualizar o estado dos monitores (o seu handler corre antes do nosso idle). */
@@ -95,9 +103,14 @@ export default class AutoTilerExtension extends Extension {
 
     // Em GNOME Shell 51 disable() não pode ser assíncrona.
     disable() {
+        if (this._healId)
+            GLib.Source.remove(this._healId);
+        this._healId = 0;
         Main.wm.removeKeybinding('toggle-float');
         Main.wm.removeKeybinding('toggle-tiling');
         Main.wm.removeKeybinding('restore-layout');
+        for (const name of ['swap-left', 'swap-right', 'swap-up', 'swap-down', 'focus-next', 'toggle-pin'])
+            Main.wm.removeKeybinding(name);
 
         for (const piece of this._ui ?? []) {
             try {
@@ -167,7 +180,8 @@ export default class AutoTilerExtension extends Extension {
                 return {x, y};
             },
             animationsAllowed: () => animator.allowed(),
-            animateWindow: (win, from, to, ms) => animator.animate(win, from, to, ms),
+            animateWindow: (win, from, to, ms, fade) => animator.animate(win, from, to, ms, fade),
+            activate: win => win.activate(global.get_current_time()),
             cancelAnimation: win => animator.cancel(win),
             cancelAllAnimations: () => animator.cancelAll(),
             now: () => Math.floor(GLib.get_monotonic_time() / 1000),

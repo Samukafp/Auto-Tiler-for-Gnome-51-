@@ -31,25 +31,44 @@ export class FocusBorder {
         this._actorSignals = [];
         this._displaySignals = [];
         this._timerId = 0;
+        this._guardId = 0;
         this._wallpaper = new WallpaperColors(() => this._update());
         this._points = null;
         this._pointsKey = '';
 
         global.window_group.add_child(this._area);
-        this._displaySignals.push(global.display.connect('notify::focus-window', () => this._follow()));
+        this._listen(global.display, 'notify::focus-window', () => this._follow());
         // Menus e pop-ups da janela ficam POR CIMA dela: a borda tem de ficar logo acima da
         // janela e abaixo deles, também depois de qualquer reordenação das janelas.
-        this._displaySignals.push(global.display.connect('restacked', () => this._restack()));
+        this._listen(global.display, 'restacked', () => this._restack());
         this._mapId = global.window_manager.connect('map', (_wm, actor) => {
             const meta = actor.meta_window;
             if (meta)
                 this._mapTimes.set(meta, GLib.get_monotonic_time() / 1000);
             this._update();
         });
-        this._displaySignals.push(Main.overview.connect('showing', () => this._update()));
-        this._displaySignals.push(Main.overview.connect('hidden', () => this._update()));
+        this._listen(global.workspace_manager, 'workspace-switched', () => this._update());
+        this._listen(Main.overview, 'showing', () => this._update());
+        this._listen(Main.overview, 'hidden', () => this._update());
         this._changedId = settings.gsettings.connect('changed', () => this._update());
         this._follow();
+    }
+
+    _listen(obj, name, handler) {
+        this._displaySignals.push([obj, obj.connect(name, handler)]);
+    }
+
+    /** A janela está num workspace que está a ser mostrado agora? (senão a borda ficava "sozinha") */
+    _onActiveWorkspace(win) {
+        try {
+            if (typeof win.showing_on_its_workspace === 'function' && !win.showing_on_its_workspace())
+                return false;
+            if (win.is_on_all_workspaces())
+                return true;
+            return win.get_workspace() === global.workspace_manager.get_active_workspace();
+        } catch {
+            return false;
+        }
     }
 
     _restack() {
@@ -67,7 +86,7 @@ export class FocusBorder {
         if (win) {
             this._win = win;
             for (const name of ['position-changed', 'size-changed', 'notify::fullscreen',
-                'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized'])
+                'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized', 'workspace-changed'])
                 this._winSignals.push(win.connect(name, () => this._update()));
             // A janela está a fechar: a borda desaparece já, não fica sozinha.
             this._winSignals.push(win.connect('unmanaging', () => {
@@ -152,13 +171,15 @@ export class FocusBorder {
                 return;
             }
             const actor = this._actor;
-            const show = this._settings.focusBorderEnabled && win && actor && this._settled(actor) &&
+            const show = this._settings.focusBorderEnabled &&
+                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && this._settled(actor) &&
                 !Main.overview.visible && [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG].includes(win.get_window_type()) &&
-                !win.minimized && !win.is_fullscreen() &&
+                !win.minimized && !win.is_fullscreen() && this._onActiveWorkspace(win) &&
                 !win.maximized_horizontally && !win.maximized_vertically;
             if (!show) {
                 this._area.hide();
                 this._stopTimer();
+                this._stopGuard();
                 return;
             }
             const w = this._settings.focusBorderWidth;
@@ -169,6 +190,7 @@ export class FocusBorder {
             this._area.show();
             this._area.queue_repaint();
             this._syncTimer();
+            this._startGuard();
         } catch {
             this._area.hide();
             this._stopTimer();
@@ -198,6 +220,33 @@ export class FocusBorder {
             this._area.queue_repaint();
             return GLib.SOURCE_CONTINUE;
         });
+    }
+
+    /**
+     * Guarda: enquanto a borda está visível, de segundo a segundo confirma que a janela
+     * focada ainda é aquela e que continua visível. Se algum evento se perdeu, a borda
+     * não pode ficar "sozinha" no ecrã.
+     */
+    _startGuard() {
+        if (this._guardId)
+            return;
+        this._guardId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+            if (!this._area?.visible) {
+                this._guardId = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            if (global.display.focus_window !== this._win)
+                this._follow();
+            else
+                this._update();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _stopGuard() {
+        if (this._guardId)
+            GLib.Source.remove(this._guardId);
+        this._guardId = 0;
     }
 
     _stopTimer() {
@@ -246,6 +295,7 @@ export class FocusBorder {
 
     destroy() {
         this._stopTimer();
+        this._stopGuard();
         if (this._settleSource)
             GLib.Source.remove(this._settleSource);
         this._settleSource = 0;
@@ -259,11 +309,12 @@ export class FocusBorder {
             this._settings.gsettings.disconnect(this._changedId);
         this._changedId = 0;
         this._unfollowWindow();
-        for (const [index, id] of this._displaySignals.entries()) {
-            if (index === 0)
-                global.display.disconnect(id);
-            else
-                Main.overview.disconnect(id);
+        for (const [obj, id] of this._displaySignals) {
+            try {
+                obj.disconnect(id);
+            } catch {
+                // objecto já destruído
+            }
         }
         this._displaySignals = [];
         this._area?.destroy();

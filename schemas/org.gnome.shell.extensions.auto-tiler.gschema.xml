@@ -161,6 +161,11 @@
       <summary>Borda na janela focada</summary>
     </key>
 
+    <key name="focus-border-hide-when-tiling-off" type="b">
+      <default>false</default>
+      <summary>Esconder a borda com o tiling desligado</summary>
+    </key>
+
     <key name="focus-border-width" type="i">
       <default>3</default>
       <range min="1" max="12"/>
@@ -210,6 +215,36 @@
     <key name="toggle-tiling" type="as">
       <default>['&lt;Super&gt;y']</default>
       <summary>Activar / desactivar o tiling</summary>
+    </key>
+
+    <key name="swap-left" type="as">
+      <default>['&lt;Super&gt;&lt;Control&gt;Left']</default>
+      <summary>Trocar a janela com a da esquerda</summary>
+    </key>
+
+    <key name="swap-right" type="as">
+      <default>['&lt;Super&gt;&lt;Control&gt;Right']</default>
+      <summary>Trocar a janela com a da direita</summary>
+    </key>
+
+    <key name="swap-up" type="as">
+      <default>['&lt;Super&gt;&lt;Control&gt;Up']</default>
+      <summary>Trocar a janela com a de cima</summary>
+    </key>
+
+    <key name="swap-down" type="as">
+      <default>['&lt;Super&gt;&lt;Control&gt;Down']</default>
+      <summary>Trocar a janela com a de baixo</summary>
+    </key>
+
+    <key name="focus-next" type="as">
+      <default>['&lt;Super&gt;bracketright']</default>
+      <summary>Alternar o foco entre as janelas em tiling</summary>
+    </key>
+
+    <key name="toggle-pin" type="as">
+      <default>['&lt;Super&gt;&lt;Alt&gt;y']</default>
+      <summary>Fixar / desafixar a janela em todos os workspaces</summary>
     </key>
   </schema>
 </schemalist>
