@@ -6,15 +6,15 @@ A GNOME Shell extension that automatically organizes application windows into cl
 
 ## Status
 
-**Under Active Development**
+Under Active Development
 
-Auto Tiler is already usable but may contain bugs or unexpected behaviour. New features, improvements and bug fixes are still being developed.
+Auto Tiler is already usable but may contain bugs or unexpected behaviour. New features, improvements and fixes are still being developed.
 
 ## Features
 
 - Automatic window tiling
 - Quick Settings integration
-- Enable or disable automatic tiling directly from Quick Settings
+- Enable or disable tiling directly from Quick Settings
 
 ## Installation
 
@@ -24,35 +24,47 @@ Make sure Git is installed, then open a terminal and run:
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/auto-tiler@local"
 
 git clone https://github.com/Samukafp/Auto-Tiler-for-Gnome-51-.git "$EXT_DIR"
+```
 
+**Important:** After cloning the repository, you must log out of your GNOME session and log back in before enabling the extension.
+
+This step is required for GNOME Shell to recognize the newly installed extension correctly.
+
+Once you have logged back in, open a terminal and run:
+
+```bash
 gnome-extensions enable auto-tiler@local
 ```
 
-After installation, log out and log back in to ensure the extension loads correctly.
+The extension should now be enabled and ready to use.
 
 ## Updating
 
-To update Auto Tiler to the latest version, run:
+To update the extension to the latest version, open a terminal and run:
 
 ```bash
-git -C "$HOME/.local/share/gnome-shell/extensions/auto-tiler@local" pull --ff-only
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions/auto-tiler@local"
+
+git -C "$EXT_DIR" pull
 ```
 
-If GNOME Shell does not reload the changes automatically, log out and log back in.
+After updating, log out and log back in to ensure all changes are properly loaded.
+
+## Uninstallation
+
+To remove the extension, open a terminal and run:
+
+```bash
+gnome-extensions disable auto-tiler@local
+
+rm -rf "$HOME/.local/share/gnome-shell/extensions/auto-tiler@local"
+```
 
 ## Compatibility
 
-| Component | Version |
-|---|---|
-| GNOME Shell | 51 |
-| Status | Under Active Development |
-
-## Contributing
-
-Suggestions, bug reports and contributions are welcome!
-
-Feel free to open an issue or submit a pull request.
+- GNOME Shell 51
+- Linux distributions using GNOME Shell
 
 ## License
 
-No license file is currently provided.
+See the repository for license information.
