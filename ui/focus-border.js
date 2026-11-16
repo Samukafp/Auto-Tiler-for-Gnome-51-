@@ -5,6 +5,7 @@
 // A borda só aparece quando a janela já está totalmente visível (acabou a animação
 // de abrir/mover) e some logo que a janela começa a fechar.
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
@@ -16,16 +17,20 @@ import {gradientAt, parseColor, perimeterPoints, phaseAt} from '../lib/border-pa
 const FRAME_MS = 33;
 // Tempo mínimo desde o 'map' da janela antes de mostrar a borda: cobre a animação de abrir do Shell.
 const MAP_SETTLE_MS = 450;
+const FADE_IN_MS = 320;
 const MIRROR_PROPS = ['visible', 'opacity', 'scale-x', 'scale-y', 'translation-x', 'translation-y'];
 
 export class FocusBorder {
-    constructor(settings) {
+    constructor(settings, isAnimating = () => false) {
+        this._isAnimating = isAnimating;
         this._settings = settings;
         this._area = new St.DrawingArea({visible: false, reactive: false});
         this._area.connect('repaint', area => this._paint(area));
         this._win = null;
         this._actor = null;
         this._mapTimes = new Map(); // meta_window -> instante do 'map'
+        this._fadeWins = new WeakSet(); // janelas novas: a 1.ª aparição da borda faz fade
+        this._fading = false;
         this._settleSource = 0;
         this._winSignals = [];
         this._actorSignals = [];
@@ -45,6 +50,8 @@ export class FocusBorder {
             const meta = actor.meta_window;
             if (meta)
                 this._mapTimes.set(meta, GLib.get_monotonic_time() / 1000);
+            if (meta)
+                this._fadeWins.add(meta); // a borda de uma janela nova aparece com fade
             this._update();
         });
         this._listen(global.workspace_manager, 'workspace-switched', () => this._update());
@@ -54,8 +61,46 @@ export class FocusBorder {
         this._follow();
     }
 
+    _hideArea() {
+        this._area.remove_all_transitions();
+        this._fading = false;
+        this._area.hide();
+    }
+
     _listen(obj, name, handler) {
         this._displaySignals.push([obj, obj.connect(name, handler)]);
+    }
+
+    /**
+     * Opacidade da borda: acompanha a janela nas animações NOSSAS; senão, a borda de uma
+     * janela nova (ou, se escolhido, de qualquer foco novo) aparece de 0 a 100 %.
+     */
+    _applyOpacity(win, actor, wasVisible) {
+        if (this._isAnimating(win)) {
+            this._area.remove_all_transitions();
+            this._fading = false;
+            this._area.opacity = actor.opacity;
+            return;
+        }
+        if (!wasVisible) {
+            const fade = this._fadeWins.has(win) || this._settings.focusBorderFadeOnFocus;
+            this._fadeWins.delete(win);
+            if (fade) {
+                this._area.opacity = 0;
+                this._fading = true;
+                this._area.ease({
+                    opacity: 255,
+                    duration: FADE_IN_MS,
+                    mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
+                    onStopped: () => {
+                        this._fading = false;
+                    },
+                });
+                return;
+            }
+        }
+        if (!this._fading)
+            this._area.opacity = 255;
     }
 
     /** A janela está num workspace que está a ser mostrado agora? (senão a borda ficava "sozinha") */
@@ -133,6 +178,31 @@ export class FocusBorder {
         this._actor = null;
     }
 
+    /**
+     * Rectângulo da janela tal como se VÊ agora no ecrã: aplica ao rectângulo real a
+     * translação e a escala (em torno do pivô) que o actor tem durante uma animação.
+     */
+    _visualRect(win, actor) {
+        const frame = win.get_frame_rect();
+        const sx = actor.scale_x;
+        const sy = actor.scale_y;
+        const tx = actor.translation_x;
+        const ty = actor.translation_y;
+        if (Math.abs(sx - 1) < 0.001 && Math.abs(sy - 1) < 0.001 && Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5)
+            return frame;
+        const [px, py] = actor.get_pivot_point();
+        const pvx = px * actor.width;
+        const pvy = py * actor.height;
+        const lx = frame.x - actor.x;
+        const ly = frame.y - actor.y;
+        return {
+            x: actor.x + tx + pvx + (lx - pvx) * sx,
+            y: actor.y + ty + pvy + (ly - pvy) * sy,
+            width: frame.width * sx,
+            height: frame.height * sy,
+        };
+    }
+
     /** A janela já terminou de animar (aparece inteira, sem escala nem deslocamento)? */
     _settled(actor) {
         return actor.visible && actor.opacity >= 255 &&
@@ -159,7 +229,7 @@ export class FocusBorder {
             const left = win ? this._settleRemaining(win) : 0;
             if (left > 0) {
                 // Janela a abrir: a borda espera, e volta a tentar quando a animação acabar.
-                this._area.hide();
+                this._hideArea();
                 this._stopTimer();
                 if (!this._settleSource) {
                     this._settleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.ceil(left) + 20, () => {
@@ -172,27 +242,31 @@ export class FocusBorder {
             }
             const actor = this._actor;
             const show = this._settings.focusBorderEnabled &&
-                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && this._settled(actor) &&
+                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && actor.visible && (this._settled(actor) || this._isAnimating(win)) &&
                 !Main.overview.visible && [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG].includes(win.get_window_type()) &&
                 !win.minimized && !win.is_fullscreen() && this._onActiveWorkspace(win) &&
                 !win.maximized_horizontally && !win.maximized_vertically;
             if (!show) {
-                this._area.hide();
+                this._hideArea();
                 this._stopTimer();
                 this._stopGuard();
                 return;
             }
             const w = this._settings.focusBorderWidth;
-            const rect = win.get_frame_rect();
-            this._area.set_position(rect.x - w, rect.y - w);
-            this._area.set_size(rect.width + 2 * w, rect.height + 2 * w);
+            // A borda acompanha a janela DURANTE as animações (mesma posição, escala e
+            // opacidade do actor): passa à frente / aparece / desvanece com ela.
+            const rect = this._visualRect(win, actor);
+            this._area.set_position(Math.round(rect.x - w), Math.round(rect.y - w));
+            this._area.set_size(Math.max(1, Math.round(rect.width + 2 * w)), Math.max(1, Math.round(rect.height + 2 * w)));
+            const wasVisible = this._area.visible;
             global.window_group.set_child_above_sibling(this._area, actor);
             this._area.show();
+            this._applyOpacity(win, actor, wasVisible);
             this._area.queue_repaint();
             this._syncTimer();
             this._startGuard();
         } catch {
-            this._area.hide();
+            this._hideArea();
             this._stopTimer();
         }
     }

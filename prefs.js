@@ -50,6 +50,13 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('focus-border-hide-when-tiling-off', hideOff, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(hideOff);
 
+        const fadeFocus = new Adw.SwitchRow({
+            title: 'Fade da borda ao mudar de foco',
+            subtitle: 'Desligado: mudar de foco entre janelas é instantâneo. Janelas novas fazem sempre fade',
+        });
+        settings.bind('focus-border-fade-on-focus', fadeFocus, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(fadeFocus);
+
         for (const [key, title, subtitle] of [
             ['focus-resize-min', 'A partir de', 'Número mínimo de janelas abertas no workspace'],
             ['focus-resize-max', 'Até', 'Número máximo de janelas abertas no workspace'],

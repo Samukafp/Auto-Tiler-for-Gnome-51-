@@ -40,6 +40,11 @@ export default class AutoTilerExtension extends Extension {
             setEnabled: (uuid, on) => (on
                 ? Main.extensionManager.enableExtension(uuid)
                 : Main.extensionManager.disableExtension(uuid)),
+            addTimeout: (ms, fn) => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+                fn();
+                return GLib.SOURCE_REMOVE;
+            }),
+            removeTimeout: id => GLib.Source.remove(id),
             log: message => console.log('[auto-tiler]', message),
             logError: error => console.error('[auto-tiler]', error),
         }, this._settings, () => this._manager?.hasFullscreen() ?? false);
@@ -59,7 +64,7 @@ export default class AutoTilerExtension extends Extension {
             () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
             () => new WorkspaceNumbers(this._settings),
-            () => new FocusBorder(this._settings),
+            () => new FocusBorder(this._settings, win => this._animator?.isRunning(win) ?? false),
             () => {
                 const border = this._ui.find(piece => piece instanceof FocusBorder);
                 this._dropHint = new DropHint(this._settings, () => border?.colors() ??
@@ -136,6 +141,7 @@ export default class AutoTilerExtension extends Extension {
         // Só quando o utilizador desliga a extensão (não ao bloquear o ecrã / terminar a sessão).
         if (Main.sessionMode.currentMode === 'user')
             this._effects?.restore();
+        this._effects?.destroy();
         this._effects = null;
 
         this._savedOrder = this._manager?.exportOrder() ?? this._savedOrder;
@@ -180,8 +186,13 @@ export default class AutoTilerExtension extends Extension {
                 return {x, y};
             },
             animationsAllowed: () => animator.allowed(),
-            animateWindow: (win, from, to, ms, fade) => animator.animate(win, from, to, ms, fade),
+            animateWindow: (win, from, to, ms, fade, soft) => animator.animate(win, from, to, ms, fade, soft),
             activate: win => win.activate(global.get_current_time()),
+            setOpacity: (win, value) => {
+                const actor = win.get_compositor_private();
+                if (actor)
+                    actor.opacity = value;
+            },
             cancelAnimation: win => animator.cancel(win),
             cancelAllAnimations: () => animator.cancelAll(),
             now: () => Math.floor(GLib.get_monotonic_time() / 1000),

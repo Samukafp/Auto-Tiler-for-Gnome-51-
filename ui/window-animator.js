@@ -21,7 +21,7 @@ export class WindowAnimator {
         }
     }
 
-    animate(win, from, to, ms, fade = false) {
+    animate(win, from, to, ms, fade = false, soft = false) {
         const actor = win.get_compositor_private();
         if (!actor || to.width <= 0 || to.height <= 0)
             return;
@@ -37,11 +37,14 @@ export class WindowAnimator {
                 width: previous.to.width * actor.scale_x,
                 height: previous.to.height * actor.scale_y,
             };
+            const opacityNow = actor.opacity;
             actor.disconnect(previous.destroyId);
             actor.remove_all_transitions();
             this._running.delete(win);
-            if (previous.fade)
-                actor.opacity = 255; // o fade da animação anterior não pode ficar a meio
+            // O fade da animação anterior NÃO se corta: continua a partir da opacidade que tem
+            // (cortá-lo para 255 fazia a janela "estalar" a meio de aparecer).
+            if (previous.fade !== false && fade === false && opacityNow < 255)
+                fade = opacityNow;
         } else {
             this.cancel(win);
         }
@@ -65,14 +68,21 @@ export class WindowAnimator {
             scale_x: 1,
             scale_y: 1,
             duration: ms,
-            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            // 'soft' (aparecer): arranca devagar e acaba devagar, para o desvanecer se ver bem;
+            // o ease-out cubic dos movimentos faz quase tudo nos primeiros 150 ms.
+            mode: soft ? Clutter.AnimationMode.EASE_IN_OUT_QUAD : Clutter.AnimationMode.EASE_OUT_CUBIC,
             onStopped: () => this._finish(win),
         };
-        if (fade) {
+        if (fade !== false) {
             actor.opacity = fade === true ? 120 : fade;
             target.opacity = 255;
         }
         actor.ease(target);
+    }
+
+    /** Há uma animação NOSSA a decorrer nesta janela? (a borda só a acompanha nesse caso) */
+    isRunning(win) {
+        return this._running.has(win);
     }
 
     cancel(win) {
@@ -109,7 +119,7 @@ export class WindowAnimator {
 
     _reset(actor, fade = false) {
         actor.set({translation_x: 0, translation_y: 0, scale_x: 1, scale_y: 1});
-        if (fade)
+        if (fade !== false)
             actor.opacity = 255;
     }
 }
