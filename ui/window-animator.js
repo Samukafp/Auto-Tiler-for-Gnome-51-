@@ -8,8 +8,7 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 
-const OPACITY_SHARE = 0.55; // o fade dura esta fracção do movimento
-const START_WAIT_MS = 160; // espera máxima pelo actor chegar à geometria nova
+const WAIT_MS = 120; // espera máxima pelo actor chegar à geometria nova (regressos)
 
 export class WindowAnimator {
     constructor() {
@@ -25,7 +24,12 @@ export class WindowAnimator {
         }
     }
 
-    animate(win, from, to, ms, fade = false, soft = false) {
+    /**
+     * @param {boolean} wait só arranca quando o actor já está no sítio novo (regressos ao slot):
+     *   antes disso o actor ainda mostra a janela no sítio ANTIGO e a transformação aparecia
+     *   deslocada para o lado oposto durante alguns frames (a janela "piscava" noutro canto).
+     */
+    animate(win, from, to, ms, fade = false, soft = false, wait = false) {
         const actor = win.get_compositor_private();
         if (!actor || to.width <= 0 || to.height <= 0)
             return;
@@ -34,17 +38,18 @@ export class WindowAnimator {
         // ecrã (em vez de saltar para o fim e recomeçar): é o que evita os "solavancos"
         // quando o layout muda várias vezes seguidas.
         const previous = this._running.get(win);
-        if (previous && previous.actor === actor) {
-            if (previous.started) {
-                from = {
-                    x: previous.to.x + actor.translation_x,
-                    y: previous.to.y + actor.translation_y,
-                    width: previous.to.width * actor.scale_x,
-                    height: previous.to.height * actor.scale_y,
-                };
-            }
+        if (previous && previous.actor === actor && previous.pending) {
+            this._abortPending(previous);
+            this._running.delete(win);
+        } else if (previous && previous.actor === actor) {
+            from = {
+                x: previous.to.x + actor.translation_x,
+                y: previous.to.y + actor.translation_y,
+                width: previous.to.width * actor.scale_x,
+                height: previous.to.height * actor.scale_y,
+            };
             const opacityNow = actor.opacity;
-            this._stopEntry(previous);
+            actor.disconnect(previous.destroyId);
             actor.remove_all_transitions();
             this._running.delete(win);
             // O fade da animação anterior NÃO se corta: continua a partir da opacidade que tem
@@ -55,46 +60,36 @@ export class WindowAnimator {
             this.cancel(win);
         }
 
-        const entry = {actor, win, fade, from: {...from}, to: {...to}, ms, soft, started: false, stops: []};
-        entry.stops.push(() => actor.disconnect(entry.destroyId));
-        entry.destroyId = actor.connect('destroy', () => {
-            this._stopEntry(entry);
-            this._running.delete(win);
-        });
-        this._running.set(win, entry);
-
-        // Só se começa quando o actor JÁ está no sítio novo: o Wayland aplica a nova posição/tamanho
-        // alguns frames depois do pedido. Começar antes deslocava a janela para o lado oposto (ela
-        // "desaparecia" um instante) ou fazia-a aparecer logo no destino sem vir de lado nenhum.
-        if (this._ready(win, actor, to)) {
-            this._start(entry);
+        if (wait && !this._ready(win, actor, to)) {
+            const entry = {actor, fade, to: {...to}, pending: true, ids: [], timeoutId: 0};
+            entry.destroyId = actor.connect('destroy', () => {
+                this._abortPending(entry);
+                this._running.delete(win);
+            });
+            this._running.set(win, entry);
+            const go = () => {
+                if (this._running.get(win) !== entry)
+                    return;
+                this._abortPending(entry);
+                this._running.delete(win);
+                this._begin(win, actor, from, to, ms, fade, soft);
+            };
+            for (const name of ['notify::x', 'notify::y', 'notify::width', 'notify::height'])
+                entry.ids.push(actor.connect(name, () => {
+                    if (this._ready(win, actor, to))
+                        go();
+                }));
+            entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WAIT_MS, () => {
+                entry.timeoutId = 0;
+                go();
+                return GLib.SOURCE_REMOVE;
+            });
             return;
         }
-        const go = () => {
-            if (entry.started || this._running.get(win) !== entry)
-                return;
-            if (this._ready(win, actor, to) || entry.timedOut)
-                this._start(entry);
-        };
-        for (const name of ['notify::x', 'notify::y', 'notify::width', 'notify::height']) {
-            const id = actor.connect(name, go);
-            entry.stops.push(() => actor.disconnect(id));
-        }
-        const timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, START_WAIT_MS, () => {
-            entry.timeoutId = 0;
-            entry.timedOut = true;
-            go();
-            return GLib.SOURCE_REMOVE;
-        });
-        entry.timeoutId = timer;
-        entry.stops.push(() => {
-            if (entry.timeoutId)
-                GLib.Source.remove(entry.timeoutId);
-            entry.timeoutId = 0;
-        });
+        this._begin(win, actor, from, to, ms, fade, soft);
     }
 
-    /** O actor já mostra a geometria nova (posição e tamanho do frame confirmados)? */
+    /** O actor já mostra a geometria nova (frame e posição do buffer confirmados)? */
     _ready(win, actor, to) {
         try {
             const frame = win.get_frame_rect();
@@ -107,31 +102,28 @@ export class WindowAnimator {
         }
     }
 
-    _stopEntry(entry) {
-        const stops = entry.stops ?? [];
-        entry.stops = [];
-        for (const stop of stops) {
+    _abortPending(entry) {
+        for (const id of entry.ids ?? []) {
             try {
-                stop();
+                entry.actor.disconnect(id);
             } catch {
-                // objecto já destruído
+                // actor destruído
             }
+        }
+        entry.ids = [];
+        if (entry.timeoutId)
+            GLib.Source.remove(entry.timeoutId);
+        entry.timeoutId = 0;
+        try {
+            entry.actor.disconnect(entry.destroyId);
+        } catch {
+            // actor destruído
         }
     }
 
-    _start(entry) {
-        const {actor, win, from, to, ms, fade, soft} = entry;
-        // Desliga a espera (sinais e temporizador), mantém a ligação ao 'destroy'.
-        const stops = entry.stops;
-        entry.stops = [stops[0]];
-        for (const stop of stops.slice(1)) {
-            try {
-                stop();
-            } catch {
-                // objecto já destruído
-            }
-        }
-        entry.started = true;
+    _begin(win, actor, from, to, ms, fade, soft) {
+        const destroyId = actor.connect('destroy', () => this._running.delete(win));
+        this._running.set(win, {actor, destroyId, fade, to: {...to}});
 
         // O pivô fica no canto superior esquerdo do actor.
         actor.set_pivot_point(0, 0);
@@ -154,22 +146,20 @@ export class WindowAnimator {
             mode: soft ? Clutter.AnimationMode.EASE_IN_OUT_QUAD : Clutter.AnimationMode.EASE_OUT_CUBIC,
             onStopped: () => this._finish(win),
         };
-        if (fade !== false) {
+        if (fade === 'out') {
+            // Inverso de aparecer: vai até ao slot enquanto desvanece.
+            target.opacity = 0;
+        } else if (fade !== false) {
             actor.opacity = fade === true ? 120 : fade;
-            // O desvanecer corre à parte e mais depressa que o movimento: com a mesma curva, a
-            // janela fazia quase todo o caminho ainda invisível e parecia aparecer já no destino.
-            actor.ease({
-                opacity: 255,
-                duration: Math.round(ms * OPACITY_SHARE),
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            });
+            target.opacity = 255;
         }
         actor.ease(target);
     }
 
-    /** Há uma animação NOSSA a decorrer (já começada) nesta janela? (a borda só acompanha essa) */
+    /** Há uma animação NOSSA a decorrer nesta janela? (a borda só a acompanha nesse caso) */
     isRunning(win) {
-        return this._running.get(win)?.started ?? false;
+        const entry = this._running.get(win);
+        return !!entry && !entry.pending;
     }
 
     cancel(win) {
@@ -178,7 +168,11 @@ export class WindowAnimator {
             return;
         this._running.delete(win);
         try {
-            this._stopEntry(entry);
+            if (entry.pending) {
+                this._abortPending(entry);
+                return;
+            }
+            entry.actor.disconnect(entry.destroyId);
             entry.actor.remove_all_transitions();
             this._reset(entry.actor, entry.fade);
         } catch {
@@ -197,7 +191,7 @@ export class WindowAnimator {
             return;
         this._running.delete(win);
         try {
-            this._stopEntry(entry);
+            entry.actor.disconnect(entry.destroyId);
             this._reset(entry.actor, entry.fade);
         } catch {
             // actor já destruído

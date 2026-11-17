@@ -15,6 +15,7 @@ import {DropHint} from './ui/drop-hint.js';
 import {FocusBorder} from './ui/focus-border.js';
 import {QuickSettingsToggle} from './ui/quick-settings.js';
 import {RestoreLayoutButton} from './ui/restore-button.js';
+import {SendBackButton} from './ui/send-back-button.js';
 import {WorkspaceNumbers} from './ui/workspace-numbers.js';
 import {WindowAnimator} from './ui/window-animator.js';
 
@@ -63,6 +64,7 @@ export default class AutoTilerExtension extends Extension {
         for (const create of [
             () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
+            () => new SendBackButton(this._manager),
             () => new WorkspaceNumbers(this._settings),
             () => new FocusBorder(this._settings, win => this._animator?.isRunning(win) ?? false),
             () => {
@@ -186,7 +188,7 @@ export default class AutoTilerExtension extends Extension {
                 return {x, y};
             },
             animationsAllowed: () => animator.allowed(),
-            animateWindow: (win, from, to, ms, fade, soft) => animator.animate(win, from, to, ms, fade, soft),
+            animateWindow: (win, from, to, ms, fade, soft, wait) => animator.animate(win, from, to, ms, fade, soft, wait),
             activate: win => win.activate(global.get_current_time()),
             setOpacity: (win, value) => {
                 const actor = win.get_compositor_private();
