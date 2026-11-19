@@ -225,6 +225,18 @@ export class FocusBorder {
             Math.abs(actor.translation_x) < 0.5 && Math.abs(actor.translation_y) < 0.5;
     }
 
+    /** A janela tem mesmo conteúdo desenhado? (buffer não vazio e a cobrir a moldura) */
+    _painted(win, actor) {
+        try {
+            const b = win.get_buffer_rect();
+            const f = win.get_frame_rect();
+            return b.width > 1 && b.height > 1 && actor.mapped !== false &&
+                b.width >= f.width - 2 && b.height >= f.height - 2;
+        } catch {
+            return true;
+        }
+    }
+
     /** Milissegundos que faltam para a animação de abrir da janela terminar (0 = já terminou). */
     _settleRemaining(win) {
         const mapped = this._mapTimes.get(win);
@@ -257,7 +269,7 @@ export class FocusBorder {
             }
             const actor = this._actor;
             const show = this._settings.focusBorderEnabled &&
-                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && actor.visible && (this._settled(actor) || (this._isAnimating(win) && actor.opacity >= 255)) &&
+                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && actor.visible && this._painted(win, actor) && (this._settled(actor) || (this._isAnimating(win) && actor.opacity >= 255)) &&
                 !Main.overview.visible && [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG].includes(win.get_window_type()) &&
                 !win.minimized && !win.is_fullscreen() && this._onActiveWorkspace(win) &&
                 !win.maximized_horizontally && !win.maximized_vertically;

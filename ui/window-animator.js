@@ -12,7 +12,8 @@ const WAIT_OPEN_MS = 500; // aberturas: apps lentas (Nautilus) demoram a assumir
 const SETTLE_MS = 90; // aberturas: o tamanho tem de se manter estável este tempo antes de aparecer
 // aberturas: terminais e outras apps ajustam-se a uma grelha (não chegam ao pixel exacto do slot)
 const OPEN_TOLERANCE_PX = 24;
-const WAIT_MS = 120; // espera máxima pelo actor chegar à geometria nova (regressos)
+const WAIT_MS = 120;
+const WAIT_RESIZE_MS = 400; // mudança de tamanho: espera que a app redesenhe (apps GTK4/Firefox demoram)
 
 export class WindowAnimator {
     constructor() {
@@ -125,7 +126,7 @@ export class WindowAnimator {
                         return GLib.SOURCE_REMOVE;
                     });
                 }));
-            entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, fade === 0 ? WAIT_OPEN_MS : WAIT_MS, () => {
+            entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, fade === 0 ? WAIT_OPEN_MS : (soft ? WAIT_MS : WAIT_RESIZE_MS), () => {
                 entry.timeoutId = 0;
                 if (fade === 0)
                     console.log(`[auto-tiler] abertura: tempo esgotado (${win.get_wm_class()}), aparece mesmo sem estar no tamanho final`);

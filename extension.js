@@ -271,9 +271,12 @@ export default class AutoTilerExtension extends Extension {
                             continue;
                         const [x, y] = actor.get_transformed_position();
                         const [w, h] = actor.get_transformed_size();
-                        if (w > h && y > monitor.y + monitor.height / 2 && x >= monitor.x - 1 &&
-                            x < monitor.x + monitor.width && y < bottom)
-                            best = Math.max(best, Math.round(bottom - y));
+                        // Dock em baixo: o que conta é a ALTURA do dash, e não a distância ao fundo do
+                        // ecrã. Com o autohide da Dash to Dock o dash desce até fora do ecrã (y = fundo) e
+                        // a distância passava a 0 / valores intermédios durante a animação.
+                        if (w > h && h > 8 && y + h >= bottom - 2 && y >= bottom - h - 2 &&
+                            x >= monitor.x - 1 && x < monitor.x + monitor.width)
+                            best = Math.max(best, Math.round(h));
                     }
                     return best;
                 } catch {
