@@ -52,6 +52,21 @@ export class FocusBorder {
                 this._mapTimes.set(meta, GLib.get_monotonic_time() / 1000);
             if (meta)
                 this._fadeWins.add(meta); // a borda de uma janela nova aparece com fade
+            // Apps pesadas (VS Code, editores de vídeo) fazem 'map' muito antes de pintar o
+            // conteúdo: a contagem para mostrar a borda recomeça no primeiro frame desenhado.
+            if (meta) {
+                try {
+                    const id = actor.connect('first-frame', () => {
+                        actor.disconnect(id);
+                        if (this._mapTimes.has(meta)) {
+                            this._mapTimes.set(meta, GLib.get_monotonic_time() / 1000);
+                            this._update();
+                        }
+                    });
+                } catch {
+                    // sem sinal 'first-frame': fica a contagem desde o map
+                }
+            }
             this._update();
         });
         this._listen(global.workspace_manager, 'workspace-switched', () => this._update());
@@ -242,7 +257,7 @@ export class FocusBorder {
             }
             const actor = this._actor;
             const show = this._settings.focusBorderEnabled &&
-                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && actor.visible && (this._settled(actor) || this._isAnimating(win)) &&
+                !(this._settings.focusBorderHideWhenTilingOff && !this._settings.tilingEnabled) && win && actor && actor.visible && (this._settled(actor) || (this._isAnimating(win) && actor.opacity >= 255)) &&
                 !Main.overview.visible && [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG].includes(win.get_window_type()) &&
                 !win.minimized && !win.is_fullscreen() && this._onActiveWorkspace(win) &&
                 !win.maximized_horizontally && !win.maximized_vertically;

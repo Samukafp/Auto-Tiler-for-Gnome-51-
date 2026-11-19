@@ -155,6 +155,43 @@ export default class AutoTilerExtension extends Extension {
         this._settings = null;
     }
 
+    /** A dock da Dash to Dock: a API da extensão (dash visível) e, como alternativa, o contentor. */
+    _dockActors() {
+        const actors = [];
+        try {
+            const ext = Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com');
+            const manager = ext?.stateObj?.dockManager;
+            const docks = manager?._allDocks ?? (manager?.mainDock ? [manager.mainDock] : []);
+            for (const dock of docks) {
+                const visual = dock.dash ?? dock._box ?? dock;
+                if (visual?.get_transformed_position)
+                    actors.push(visual);
+            }
+        } catch {
+            // sem API: usa o contentor
+        }
+        for (const actor of Main.uiGroup.get_children()) {
+            if (actor.name !== 'dashtodockContainer')
+                continue;
+            actors.push(actor);
+            // O contentor pode ter altura 0 (a dock vive nos filhos): o dash é o que se vê.
+            const found = [];
+            const walk = (node, depth) => {
+                if (depth > 5 || !node.get_children)
+                    return;
+                for (const child of node.get_children()) {
+                    const cls = child.constructor?.name ?? '';
+                    if (child.name === 'dash' || /DockDash/.test(cls))
+                        found.push(child);
+                    walk(child, depth + 1);
+                }
+            };
+            walk(actor, 0);
+            actors.push(...found);
+        }
+        return actors;
+    }
+
     _createHost() {
         const animator = this._animator;
         return {
@@ -194,6 +231,179 @@ export default class AutoTilerExtension extends Extension {
                 const actor = win.get_compositor_private();
                 if (actor)
                     actor.opacity = value;
+            },
+            // Tira as transições do Shell (animação de abertura própria) para pôr a nossa no lugar.
+            // remove_all_transitions deixa a escala/posição a meio da animação do Shell (0.9 → a
+            // janela ficava 10 % mais pequena): repõe-as.
+            cancelShellEffects: win => {
+                const actor = win.get_compositor_private();
+                if (!actor)
+                    return;
+                actor.remove_all_transitions();
+                actor.set_pivot_point(0, 0);
+                actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0});
+            },
+            // Corre antes do próximo frame, FORA do sinal do Mutter (reentrar no Mutter dentro de
+            // notify::maximized fez o Shell crashar).
+            beforeRedraw: fn => {
+                const laters = global.compositor.get_laters?.();
+                if (laters)
+                    laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
+                        fn();
+                        return GLib.SOURCE_REMOVE;
+                    });
+                else
+                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                        fn();
+                        return GLib.SOURCE_REMOVE;
+                    });
+            },
+            // Altura da Dash to Dock em baixo no monitor principal (0 se não houver).
+            dockHeight: () => {
+                try {
+                    const monitor = Main.layoutManager.primaryMonitor;
+                    if (!monitor)
+                        return 0;
+                    const bottom = monitor.y + monitor.height;
+                    let best = 0;
+                    for (const actor of this._dockActors()) {
+                        if (!actor.visible)
+                            continue;
+                        const [x, y] = actor.get_transformed_position();
+                        const [w, h] = actor.get_transformed_size();
+                        if (w > h && y > monitor.y + monitor.height / 2 && x >= monitor.x - 1 &&
+                            x < monitor.x + monitor.width && y < bottom)
+                            best = Math.max(best, Math.round(bottom - y));
+                    }
+                    return best;
+                } catch {
+                    return 0;
+                }
+            },
+            // Para o journal quando a dock não é medida: o que existe no ecrã com "dock" no nome.
+            dockDiagnostic: () => {
+                try {
+                    const ext = Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com');
+                    const names = Main.uiGroup.get_children()
+                        .filter(a => /dock|dash/i.test(`${a.name} ${a.constructor?.name}`))
+                        .map(a => {
+                            const [x, y] = a.get_transformed_position();
+                            const [w, h] = a.get_transformed_size();
+                            return `${a.name || '?'}/${a.constructor?.name}@${Math.round(x)},${Math.round(y)} ${Math.round(w)}x${Math.round(h)}${a.visible ? '' : ' oculto'}`;
+                        });
+                    const inner = [];
+                    const walk = (node, depth) => {
+                        if (depth > 4 || !node.get_children)
+                            return;
+                        for (const child of node.get_children()) {
+                            const [x, y] = child.get_transformed_position();
+                            const [w, h] = child.get_transformed_size();
+                            inner.push(`${'>'.repeat(depth + 1)}${child.name || '?'}/${child.constructor?.name}` +
+                                `@${Math.round(x)},${Math.round(y)} ${Math.round(w)}x${Math.round(h)}${child.visible ? '' : ' oculto'}`);
+                            walk(child, depth + 1);
+                        }
+                    };
+                    for (const a of Main.uiGroup.get_children()) {
+                        if (a.name === 'dashtodockContainer')
+                            walk(a, 0);
+                    }
+                    return `extensão dash-to-dock ${ext ? `estado ${ext.state}` : 'não encontrada'}; ` +
+                        `candidatos: ${names.join(' | ') || 'nenhum'}; dentro: ${inner.slice(0, 14).join(' | ')}`;
+                } catch (e) {
+                    return `erro: ${e.message}`;
+                }
+            },
+            actorInfo: win => {
+                try {
+                    const actor = win.get_compositor_private();
+                    if (!actor)
+                        return 'sem actor';
+                    const b = win.get_buffer_rect();
+                    return `buffer ${b.width}x${b.height}+${b.x}+${b.y} actor ${Math.round(actor.x)},${Math.round(actor.y)} ` +
+                        `${Math.round(actor.width)}x${Math.round(actor.height)} escala ${actor.scale_x.toFixed(2)}x${actor.scale_y.toFixed(2)} ` +
+                        `opacidade ${actor.opacity} visível ${actor.visible}`;
+                } catch (e) {
+                    return `erro ${e.message}`;
+                }
+            },
+            // Avisa quando a Dash to Dock muda de tamanho/posição ou aparece/desaparece.
+            watchDock: callback => {
+                const watched = new Map();
+                const attach = actor => {
+                    if (actor.name !== 'dashtodockContainer' || watched.has(actor))
+                        return;
+                    watched.set(actor, ['notify::height', 'notify::width', 'notify::y', 'notify::visible']
+                        .map(name => actor.connect(name, callback)));
+                };
+                for (const actor of Main.uiGroup.get_children())
+                    attach(actor);
+                const addedId = Main.uiGroup.connect('child-added', (_group, actor) => {
+                    attach(actor);
+                    callback();
+                });
+                const removedId = Main.uiGroup.connect('child-removed', (_group, actor) => {
+                    watched.delete(actor);
+                    callback();
+                });
+                return () => {
+                    Main.uiGroup.disconnect(addedId);
+                    Main.uiGroup.disconnect(removedId);
+                    for (const [actor, ids] of watched) {
+                        for (const id of ids) {
+                            try {
+                                actor.disconnect(id);
+                            } catch {
+                                // actor já destruído
+                            }
+                        }
+                    }
+                    watched.clear();
+                };
+            },
+            // Rede de segurança: janela invisível (opacidade 0) sem nenhuma animação nossa a tratar dela.
+            revealStuck: win => {
+                const actor = win.get_compositor_private();
+                if (!actor || animator.isBusy(win) || actor.opacity > 1 || !actor.visible)
+                    return false;
+                actor.remove_all_transitions();
+                actor.opacity = 255;
+                return true;
+            },
+            // Mantém a janela a opacidade 0 (a limpeza do Shell repõe 255) até ser libertada.
+            holdHidden: win => {
+                const actor = win.get_compositor_private();
+                if (!actor)
+                    return null;
+                const hold = () => {
+                    if (actor.opacity !== 1)
+                        actor.opacity = 1;
+                };
+                hold();
+                const id = actor.connect('notify::opacity', hold);
+                return () => {
+                    try {
+                        actor.disconnect(id);
+                    } catch {
+                        // actor destruído
+                    }
+                };
+            },
+            // Escala/deslocamento deixados no actor sem nenhuma animação nossa a decorrer.
+            stuckTransform: win => {
+                const actor = win.get_compositor_private();
+                if (!actor || animator.isRunning(win) || actor.get_transition?.('scale-x'))
+                    return null;
+                const off = Math.abs(actor.scale_x - 1) > 0.005 || Math.abs(actor.scale_y - 1) > 0.005 ||
+                    Math.abs(actor.translation_x) > 0.5 || Math.abs(actor.translation_y) > 0.5;
+                return off ? {sx: actor.scale_x, sy: actor.scale_y} : null;
+            },
+            resetTransform: win => {
+                const actor = win.get_compositor_private();
+                if (!actor)
+                    return;
+                actor.remove_all_transitions();
+                actor.set_pivot_point(0, 0);
+                actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0});
             },
             cancelAnimation: win => animator.cancel(win),
             cancelAllAnimations: () => animator.cancelAll(),

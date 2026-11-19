@@ -8,6 +8,10 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 
+const WAIT_OPEN_MS = 500; // aberturas: apps lentas (Nautilus) demoram a assumir o tamanho do tiling
+const SETTLE_MS = 90; // aberturas: o tamanho tem de se manter estável este tempo antes de aparecer
+// aberturas: terminais e outras apps ajustam-se a uma grelha (não chegam ao pixel exacto do slot)
+const OPEN_TOLERANCE_PX = 24;
 const WAIT_MS = 120; // espera máxima pelo actor chegar à geometria nova (regressos)
 
 export class WindowAnimator {
@@ -38,9 +42,20 @@ export class WindowAnimator {
         // ecrã (em vez de saltar para o fim e recomeçar): é o que evita os "solavancos"
         // quando o layout muda várias vezes seguidas.
         const previous = this._running.get(win);
+        if (previous && previous.actor === actor && previous.pending && previous.fade === 0 && fade !== 0) {
+            // Janela a abrir (escondida à espera do tamanho final) e o layout pede-lhe um movimento:
+            // não se anima (viu-se a janela a "viajar" desde o ecrã inteiro); só se actualiza o
+            // destino, e o fade de abertura aparece já no sítio certo.
+            previous.to = {...to};
+            return;
+        }
         if (previous && previous.actor === actor && previous.pending) {
             this._abortPending(previous);
             this._running.delete(win);
+            // Abertura interrompida a meio da espera: a janela estava escondida (opacidade 0);
+            // se a nova animação não desvanece, ficaria invisível para sempre.
+            if (previous.fade === 0 && fade === false)
+                actor.opacity = 255;
         } else if (previous && previous.actor === actor) {
             from = {
                 x: previous.to.x + actor.translation_x,
@@ -60,27 +75,60 @@ export class WindowAnimator {
             this.cancel(win);
         }
 
-        if (wait && !this._ready(win, actor, to)) {
+        const tol = fade === 0 ? OPEN_TOLERANCE_PX : 2;
+        if (wait && !this._ready(win, actor, to, tol)) {
             const entry = {actor, fade, to: {...to}, pending: true, ids: [], timeoutId: 0};
             entry.destroyId = actor.connect('destroy', () => {
                 this._abortPending(entry);
                 this._running.delete(win);
             });
             this._running.set(win, entry);
+            if (fade === 0) {
+                // Aberturas: a janela fica INVISÍVEL enquanto espera. A limpeza da animação do Shell
+                // (cancelada por nós) repõe a opacidade a 255 e fazia a janela "piscar": vigia-se a
+                // opacidade e volta a 0 sempre que alguém a mexa.
+                const hold = () => {
+                    if (actor.opacity !== 1) // 1 e não 0: com 0 a app deixa de receber frame callbacks
+                        actor.opacity = 1;
+                };
+                hold();
+                entry.ids.push(actor.connect('notify::opacity', hold));
+            }
             const go = () => {
                 if (this._running.get(win) !== entry)
                     return;
                 this._abortPending(entry);
                 this._running.delete(win);
-                this._begin(win, actor, from, to, ms, fade, soft);
+                if (fade === 0)
+                    from = {...entry.to}; // abertura: só fade, sem movimento
+                this._begin(win, actor, from, entry.to, ms, fade, soft);
+            };
+            const open = fade === 0;
+            const settle = () => {
+                if (this._running.get(win) !== entry)
+                    return;
+                entry.settleId = 0;
+                if (this._ready(win, actor, entry.to, tol))
+                    go();
             };
             for (const name of ['notify::x', 'notify::y', 'notify::width', 'notify::height'])
                 entry.ids.push(actor.connect(name, () => {
-                    if (this._ready(win, actor, to))
-                        go();
+                    if (!this._ready(win, actor, entry.to, tol))
+                        return;
+                    if (!open)
+                        return go();
+                    // Aberturas: só aparece depois de o tamanho ficar parado (apps que reajustam).
+                    if (entry.settleId)
+                        GLib.Source.remove(entry.settleId);
+                    entry.settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SETTLE_MS, () => {
+                        settle();
+                        return GLib.SOURCE_REMOVE;
+                    });
                 }));
-            entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WAIT_MS, () => {
+            entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, fade === 0 ? WAIT_OPEN_MS : WAIT_MS, () => {
                 entry.timeoutId = 0;
+                if (fade === 0)
+                    console.log(`[auto-tiler] abertura: tempo esgotado (${win.get_wm_class()}), aparece mesmo sem estar no tamanho final`);
                 go();
                 return GLib.SOURCE_REMOVE;
             });
@@ -90,12 +138,16 @@ export class WindowAnimator {
     }
 
     /** O actor já mostra a geometria nova (frame e posição do buffer confirmados)? */
-    _ready(win, actor, to) {
+    _ready(win, actor, to, tol = 2) {
         try {
             const frame = win.get_frame_rect();
             const buffer = win.get_buffer_rect();
-            return Math.abs(frame.x - to.x) <= 2 && Math.abs(frame.y - to.y) <= 2 &&
-                Math.abs(frame.width - to.width) <= 2 && Math.abs(frame.height - to.height) <= 2 &&
+            return Math.abs(frame.x - to.x) <= tol && Math.abs(frame.y - to.y) <= tol &&
+                Math.abs(frame.width - to.width) <= tol && Math.abs(frame.height - to.height) <= tol &&
+                // O Mutter pode já dar como tamanho o PEDIDO; o buffer é o que a app realmente desenhou
+                // (inclui sombras, nunca é menor que a janela): se não cobre o destino, a app ainda
+                // não redimensionou e a janela veria-se pequena.
+                buffer.width >= to.width - tol && buffer.height >= to.height - tol &&
                 Math.abs(actor.x - buffer.x) <= 1 && Math.abs(actor.y - buffer.y) <= 1;
         } catch {
             return true;
@@ -114,6 +166,9 @@ export class WindowAnimator {
         if (entry.timeoutId)
             GLib.Source.remove(entry.timeoutId);
         entry.timeoutId = 0;
+        if (entry.settleId)
+            GLib.Source.remove(entry.settleId);
+        entry.settleId = 0;
         try {
             entry.actor.disconnect(entry.destroyId);
         } catch {
@@ -157,6 +212,11 @@ export class WindowAnimator {
     }
 
     /** Há uma animação NOSSA a decorrer nesta janela? (a borda só a acompanha nesse caso) */
+    /** Há alguma animação NOSSA (a decorrer ou à espera de arrancar) nesta janela? */
+    isBusy(win) {
+        return this._running.has(win);
+    }
+
     isRunning(win) {
         const entry = this._running.get(win);
         return !!entry && !entry.pending;
@@ -170,6 +230,8 @@ export class WindowAnimator {
         try {
             if (entry.pending) {
                 this._abortPending(entry);
+                if (entry.fade !== false)
+                    entry.actor.opacity = 255; // ficou escondida à espera de arrancar
                 return;
             }
             entry.actor.disconnect(entry.destroyId);

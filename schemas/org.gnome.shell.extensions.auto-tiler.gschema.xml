@@ -80,6 +80,56 @@
       <description>Transições curtas quando as janelas mudam de posição ou tamanho. Respeita as animações do GNOME.</description>
     </key>
 
+    <key name="dock-reserve" type="b">
+      <default>false</default>
+      <summary>Deixar espaço para a dock</summary>
+      <description>As janelas em tiling não ocupam a faixa inferior do ecrã, para a dock ficar sempre visível.</description>
+    </key>
+
+    <key name="dock-reserve-auto" type="b">
+      <default>true</default>
+      <summary>Medir a dock automaticamente</summary>
+      <description>Usa a altura real da Dash to Dock (se estiver ligada e em baixo); senão usa a altura manual.</description>
+    </key>
+
+    <key name="dock-reserve-margin" type="i">
+      <default>16</default>
+      <range min="0" max="200"/>
+      <summary>Margem extra sobre a dock (px)</summary>
+      <description>Somada à altura medida da dock (espaço para a ampliação dos ícones, por exemplo).</description>
+    </key>
+
+    <key name="dock-reserve-size" type="i">
+      <default>88</default>
+      <range min="0" max="400"/>
+      <summary>Altura reservada para a dock (px)</summary>
+      <description>Faixa inferior que as janelas deixam livre quando "Deixar espaço para a dock" está ligado.</description>
+    </key>
+
+    <key name="debug-log" type="b">
+      <default>false</default>
+      <summary>Registo de diagnóstico</summary>
+      <description>Escreve no journal o estado de cada janela recém-aberta (tamanho, buffer, escala, opacidade) durante os primeiros segundos.</description>
+    </key>
+
+    <key name="hide-until-sized" type="b">
+      <default>true</default>
+      <summary>Esconder a janela até ter o tamanho certo</summary>
+      <description>Ao abrir, a janela fica invisível (máx. ~1 s) até a app chegar ao tamanho do tiling, para não se ver pequena antes de ir para o sítio. Independente do fade.</description>
+    </key>
+
+    <key name="animate-open" type="b">
+      <default>true</default>
+      <summary>Animação ao abrir uma janela</summary>
+      <description>A janela nova aparece com um desvanecer suave, já no seu lugar (em vez da animação curta do GNOME).</description>
+    </key>
+
+    <key name="fast-unmaximize" type="b">
+      <default>false</default>
+      <summary>Desmaximizar sem encolher (experimental)</summary>
+      <description>Ao sair de maximizada/fullscreen, a janela vai para o lugar do tiling antes do frame seguinte, em vez de mostrar um instante o tamanho antigo. Experimental.</description>
+    </key>
+
     <key name="animation-duration" type="i">
       <default>320</default>
       <range min="50" max="600"/>

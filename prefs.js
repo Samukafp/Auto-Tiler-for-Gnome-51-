@@ -19,6 +19,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                 this._behaviourGroup(settings), this._focusResizeGroup(settings)]],
             ['Espaçamentos', 'view-grid-symbolic', [this._gapsGroup(settings)]],
             ['Borda', 'applications-graphics-symbolic', [this._appearanceGroup(settings)]],
+            ['Animações', 'media-playback-start-symbolic', [this._animationsGroup(settings)]],
             ['Efeitos', 'applications-science-symbolic', [this._effectsGroup(settings)]],
             ['Janelas', 'window-new-symbolic', [this._floatingGroup(settings)]],
             ['Atalhos', 'input-keyboard-symbolic', [this._shortcutsGroup(settings)]],
@@ -50,12 +51,6 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('focus-border-hide-when-tiling-off', hideOff, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(hideOff);
 
-        const fadeFocus = new Adw.SwitchRow({
-            title: 'Fade da borda ao mudar de foco',
-            subtitle: 'Desligado: mudar de foco entre janelas é instantâneo. Janelas novas fazem sempre fade',
-        });
-        settings.bind('focus-border-fade-on-focus', fadeFocus, 'active', Gio.SettingsBindFlags.DEFAULT);
-        group.add(fadeFocus);
 
         for (const [key, title, subtitle] of [
             ['focus-resize-min', 'A partir de', 'Número mínimo de janelas abertas no workspace'],
@@ -193,6 +188,36 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             group.add(row);
         }
 
+        const dock = new Adw.SwitchRow({
+            title: 'Deixar espaço para a dock',
+            subtitle: 'As janelas em tiling deixam livre a faixa inferior do ecrã (como o COSMIC)',
+        });
+        settings.bind('dock-reserve', dock, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(dock);
+        const dockAuto = new Adw.SwitchRow({
+            title: 'Medir a dock automaticamente',
+            subtitle: 'Usa a altura real da Dash to Dock (se estiver em baixo); senão usa o valor abaixo',
+        });
+        settings.bind('dock-reserve-auto', dockAuto, 'active', Gio.SettingsBindFlags.DEFAULT);
+        dock.bind_property('active', dockAuto, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(dockAuto);
+        const dockMargin = new Adw.SpinRow({
+            title: 'Margem extra sobre a dock',
+            subtitle: 'Em píxeis, somada à altura medida (espaço para a ampliação dos ícones)',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 200, step_increment: 2}),
+        });
+        settings.bind('dock-reserve-margin', dockMargin, 'value', Gio.SettingsBindFlags.DEFAULT);
+        dock.bind_property('active', dockMargin, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(dockMargin);
+        const dockSize = new Adw.SpinRow({
+            title: 'Altura manual para a dock',
+            subtitle: 'Em píxeis, na parte de baixo do ecrã (usada se não houver dock a medir)',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 400, step_increment: 2}),
+        });
+        settings.bind('dock-reserve-size', dockSize, 'value', Gio.SettingsBindFlags.DEFAULT);
+        dock.bind_property('active', dockSize, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(dockSize);
+
         return group;
     }
 
@@ -263,12 +288,28 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('show-restore-button', restoreBtn, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(restoreBtn);
 
+        return group;
+    }
+
+    _animationsGroup(settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Animações',
+            description: 'Tudo o que se move ou desvanece. Respeitam também a definição de animações do GNOME.',
+        });
+
         const anim = new Adw.SwitchRow({
             title: 'Animações',
             subtitle: 'Respeita também a definição de animações do GNOME',
         });
         settings.bind('animations-enabled', anim, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(anim);
+
+        const fastUnmax = new Adw.SwitchRow({
+            title: 'Desmaximizar sem encolher (experimental)',
+            subtitle: 'Reposiciona a janela antes do frame seguinte. Se o desktop se comportar mal, desliga',
+        });
+        settings.bind('fast-unmaximize', fastUnmax, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(fastUnmax);
 
         const duration = new Adw.SpinRow({
             title: 'Duração das animações (ms)',
@@ -277,6 +318,36 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('animation-duration', duration, 'value', Gio.SettingsBindFlags.DEFAULT);
         anim.bind_property('active', duration, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
         group.add(duration);
+
+
+        const fadeFocus = new Adw.SwitchRow({
+            title: 'Fade da borda ao mudar de foco',
+            subtitle: 'Desligado: mudar de foco entre janelas é instantâneo. Janelas novas fazem sempre fade',
+        });
+        settings.bind('focus-border-fade-on-focus', fadeFocus, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(fadeFocus);
+
+        const debug = new Adw.SwitchRow({
+            title: 'Registo de diagnóstico',
+            subtitle: 'Escreve no journal o estado das janelas recém-abertas (para eu perceber problemas). Desliga depois',
+        });
+        settings.bind('debug-log', debug, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(debug);
+
+        const hideSized = new Adw.SwitchRow({
+            title: 'Esconder a janela até ter o tamanho certo',
+            subtitle: 'Ao abrir, a janela fica invisível (até ~1 s) até chegar ao tamanho do tiling, em vez de se ver pequena e depois crescer. Funciona mesmo com as animações desligadas',
+        });
+        settings.bind('hide-until-sized', hideSized, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(hideSized);
+
+        const fadeBorderNote = new Adw.SwitchRow({
+            title: 'Fade ao abrir janelas novas',
+            subtitle: 'Desligado: a janela aparece de uma vez (sem desvanecer) quando já tem o tamanho certo',
+        });
+        settings.bind('animate-open', fadeBorderNote, 'active', Gio.SettingsBindFlags.DEFAULT);
+        hideSized.bind_property('active', fadeBorderNote, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(fadeBorderNote);
 
         return group;
     }
