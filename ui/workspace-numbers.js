@@ -25,6 +25,36 @@ const STYLES = {
         active: 'font-weight: bold; padding: 0 8px; border-bottom: 2px solid white;',
         idle: 'padding: 0 8px; border-bottom: 2px solid transparent; opacity: 150;',
     },
+    // Cor de destaque: comprimido com a cor de destaque do sistema (muda com o tema).
+    accent: {
+        text: i => String(i + 1),
+        active: 'font-weight: bold; padding: 0 10px; border-radius: 99px; background-color: -st-accent-color; color: -st-accent-fg-color;',
+        idle: 'padding: 0 10px; border-radius: 99px; opacity: 150;',
+    },
+    // Vidro: comprimido translúcido com contorno fino.
+    glass: {
+        text: i => String(i + 1),
+        active: 'font-weight: bold; padding: 0 10px; border-radius: 99px; background-color: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.4);',
+        idle: 'padding: 0 10px; border-radius: 99px; border: 1px solid transparent; opacity: 150;',
+    },
+    // Círculo: o activo é um círculo cheio com a cor de destaque.
+    circle: {
+        text: i => String(i + 1),
+        active: 'font-weight: bold; width: 22px; height: 22px; min-width: 22px; min-height: 22px; padding: 0; margin: 0 2px; border-radius: 99px; background-color: -st-accent-color; color: -st-accent-fg-color;',
+        idle: 'width: 22px; height: 22px; min-width: 22px; min-height: 22px; padding: 0; margin: 0 2px; border-radius: 99px; opacity: 140;',
+    },
+    // Parênteses: o activo aparece como [2].
+    bracket: {
+        text: (i, active) => (active ? `[${i + 1}]` : String(i + 1)),
+        active: 'font-weight: bold; padding: 0 6px;',
+        idle: 'padding: 0 6px; opacity: 120;',
+    },
+    // Japonês (estilo "rice"): 一 二 三 ...
+    kanji: {
+        text: i => ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'][i] ?? String(i + 1),
+        active: 'font-weight: bold; padding: 0 8px; border-bottom: 2px solid -st-accent-color;',
+        idle: 'padding: 0 8px; border-bottom: 2px solid transparent; opacity: 130;',
+    },
     // Quadrado: moldura arredondada à volta do activo.
     square: {
         text: i => String(i + 1),
@@ -94,7 +124,7 @@ class AutoTilerWorkspaceNumbers extends PanelMenu.Button {
         const active = this._wm.get_active_workspace_index();
         for (let i = 0; i < this._wm.n_workspaces; i++) {
             const label = new St.Button({
-                label: style.text(i),
+                label: style.text(i, i === active),
                 style: i === active ? style.active : style.idle,
                 reactive: !this._locked,
                 can_focus: !this._locked,

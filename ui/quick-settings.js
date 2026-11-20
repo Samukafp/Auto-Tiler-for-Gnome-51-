@@ -34,11 +34,19 @@ class AutoTilerToggle extends QuickMenuToggle {
         this._sync();
         // Submenu: opções rápidas ligadas às definições.
         this.menu.setHeader(icon, 'Tiling');
-        this._dockItem = new PopupMenu.PopupSwitchMenuItem('Espaço para a dock', gsettings.get_boolean('dock-reserve'));
-        this._dockItem.connect('toggled', (_item, state) => gsettings.set_boolean('dock-reserve', state));
-        this._dockId = gsettings.connect('changed::dock-reserve', () =>
-            this._dockItem.setToggleState(gsettings.get_boolean('dock-reserve')));
-        this.menu.addMenuItem(this._dockItem);
+        this._ids = [];
+        const addSwitch = (label, key) => {
+            const item = new PopupMenu.PopupSwitchMenuItem(label, gsettings.get_boolean(key));
+            item.connect('toggled', (_item, state) => gsettings.set_boolean(key, state));
+            this._ids.push(gsettings.connect(`changed::${key}`, () => item.setToggleState(gsettings.get_boolean(key))));
+            this.menu.addMenuItem(item);
+        };
+        // Ordem alfabética.
+        addSwitch('Borda desliza entre janelas', 'focus-border-slide');
+        addSwitch('Espaço para a dock', 'dock-reserve');
+        addSwitch('Limite de janelas por workspace', 'limit-enabled');
+        addSwitch('Mostrar a borda colorida', 'focus-border-enabled');
+        addSwitch('Sem espaços com uma só janela', 'smart-gaps');
     }
 
     _sync() {
@@ -49,9 +57,9 @@ class AutoTilerToggle extends QuickMenuToggle {
         if (this._notifyId)
             this.disconnect(this._notifyId);
         this._notifyId = 0;
-        if (this._dockId)
-            this._gsettings.disconnect(this._dockId);
-        this._dockId = 0;
+        for (const id of this._ids ?? [])
+            this._gsettings.disconnect(id);
+        this._ids = [];
         super.destroy();
     }
 });

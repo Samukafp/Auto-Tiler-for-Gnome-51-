@@ -281,11 +281,11 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('workspace-numbers', wsNumbers, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(wsNumbers);
 
-        const STYLE_IDS = ['pill', 'underline', 'square', 'dots', 'plain', 'roman'];
+        const STYLE_IDS = ['pill', 'accent', 'glass', 'circle', 'underline', 'square', 'bracket', 'kanji', 'dots', 'plain', 'roman'];
         const styleRow = new Adw.ComboRow({
             title: 'Estilo dos números de workspace',
-            subtitle: 'Comprimido, sublinhado, quadrado, pontos, texto simples ou romanos',
-            model: Gtk.StringList.new(['Comprimido', 'Sublinhado', 'Quadrado', 'Pontos', 'Texto simples', 'Romanos']),
+            subtitle: 'Muda também no ecrã de bloqueio',
+            model: Gtk.StringList.new(['Comprimido', 'Cor de destaque', 'Vidro', 'Círculo', 'Sublinhado', 'Quadrado', 'Parênteses [2]', 'Japonês (一 二 三)', 'Pontos', 'Texto simples', 'Romanos']),
         });
         styleRow.selected = Math.max(0, STYLE_IDS.indexOf(settings.get_string('workspace-numbers-style')));
         styleRow.connect('notify::selected', () =>
