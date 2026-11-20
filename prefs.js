@@ -281,6 +281,18 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('workspace-numbers', wsNumbers, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(wsNumbers);
 
+        const STYLE_IDS = ['pill', 'underline', 'square', 'dots', 'plain', 'roman'];
+        const styleRow = new Adw.ComboRow({
+            title: 'Estilo dos números de workspace',
+            subtitle: 'Comprimido, sublinhado, quadrado, pontos, texto simples ou romanos',
+            model: Gtk.StringList.new(['Comprimido', 'Sublinhado', 'Quadrado', 'Pontos', 'Texto simples', 'Romanos']),
+        });
+        styleRow.selected = Math.max(0, STYLE_IDS.indexOf(settings.get_string('workspace-numbers-style')));
+        styleRow.connect('notify::selected', () =>
+            settings.set_string('workspace-numbers-style', STYLE_IDS[styleRow.selected] ?? 'pill'));
+        settings.bind('workspace-numbers', styleRow, 'sensitive', Gio.SettingsBindFlags.GET);
+        group.add(styleRow);
+
         const restoreBtn = new Adw.SwitchRow({
             title: 'Botão de restaurar na barra',
             subtitle: 'Aparece só quando há alterações manuais ao layout',
@@ -320,19 +332,42 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         group.add(duration);
 
 
+        const slide = new Adw.SwitchRow({
+            title: 'Borda desliza entre janelas',
+            subtitle: 'Ao mudar o foco, a borda arrasta-se da janela anterior para a nova (em vez do fade)',
+        });
+        settings.bind('focus-border-slide', slide, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(slide);
+
+        const slideMs = new Adw.SpinRow({
+            title: 'Duração do deslize da borda (ms)',
+            adjustment: new Gtk.Adjustment({lower: 80, upper: 800, step_increment: 10}),
+        });
+        settings.bind('focus-border-slide-duration', slideMs, 'value', Gio.SettingsBindFlags.DEFAULT);
+        slide.bind_property('active', slideMs, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
+        group.add(slideMs);
+
+        const openFade = new Adw.SpinRow({
+            title: 'Duração do fade ao abrir (ms)',
+            subtitle: 'Quanto tempo demora a janela nova a aparecer',
+            adjustment: new Gtk.Adjustment({lower: 100, upper: 1500, step_increment: 10}),
+        });
+        settings.bind('open-fade-duration', openFade, 'value', Gio.SettingsBindFlags.DEFAULT);
+        group.add(openFade);
+
+        const borderFade = new Adw.SpinRow({
+            title: 'Duração do fade da borda (ms)',
+            adjustment: new Gtk.Adjustment({lower: 80, upper: 1000, step_increment: 10}),
+        });
+        settings.bind('focus-border-fade-duration', borderFade, 'value', Gio.SettingsBindFlags.DEFAULT);
+        group.add(borderFade);
+
         const fadeFocus = new Adw.SwitchRow({
             title: 'Fade da borda ao mudar de foco',
             subtitle: 'Desligado: mudar de foco entre janelas é instantâneo. Janelas novas fazem sempre fade',
         });
         settings.bind('focus-border-fade-on-focus', fadeFocus, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(fadeFocus);
-
-        const debug = new Adw.SwitchRow({
-            title: 'Registo de diagnóstico',
-            subtitle: 'Escreve no journal o estado das janelas recém-abertas (para eu perceber problemas). Desliga depois',
-        });
-        settings.bind('debug-log', debug, 'active', Gio.SettingsBindFlags.DEFAULT);
-        group.add(debug);
 
         const hideSized = new Adw.SwitchRow({
             title: 'Esconder a janela até ter o tamanho certo',

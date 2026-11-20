@@ -79,6 +79,8 @@ export class FocusBorder {
     _hideArea() {
         this._area.remove_all_transitions();
         this._fading = false;
+        this._sliding = false;
+        this._slideFrom = null;
         this._area.hide();
     }
 
@@ -97,7 +99,8 @@ export class FocusBorder {
             this._area.opacity = actor.opacity;
             return;
         }
-        if (!wasVisible) {
+        // Fade: janela nova, ou (se activado) a borda a aparecer / a mudar para outra janela.
+        if (!wasVisible || this._fadeWins.has(win)) {
             const fade = this._fadeWins.has(win) || this._settings.focusBorderFadeOnFocus;
             this._fadeWins.delete(win);
             if (fade) {
@@ -105,7 +108,7 @@ export class FocusBorder {
                 this._fading = true;
                 this._area.ease({
                     opacity: 255,
-                    duration: FADE_IN_MS,
+                    duration: this._settings.focusBorderFadeDuration ?? FADE_IN_MS,
                     mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
                     onStopped: () => {
                         this._fading = false;
@@ -131,19 +134,35 @@ export class FocusBorder {
         }
     }
 
+    /** A borda fica logo acima da janela focada (e por baixo de tudo o que está acima dela). */
+    _raise(actor) {
+        global.window_group.set_child_above_sibling(this._area, actor);
+    }
+
     _restack() {
         try {
             if (this._area?.visible && this._actor)
-                global.window_group.set_child_above_sibling(this._area, this._actor);
+                this._raise(this._actor);
         } catch {
             // actor a ser destruído
         }
     }
 
     _follow() {
+        const previous = this._win;
         this._unfollowWindow();
         const win = global.display.focus_window;
         if (win) {
+            if (previous && previous !== win && this._area.visible) {
+                if (this._settings.focusBorderSlide) {
+                    // mudar de foco entre janelas: a borda arrasta-se da posição actual para a nova
+                    this._slideFrom = {
+                        x: this._area.x, y: this._area.y, width: this._area.width, height: this._area.height,
+                    };
+                } else if (this._settings.focusBorderFadeOnFocus) {
+                    this._fadeWins.add(win); // ... ou desvanece
+                }
+            }
             this._win = win;
             for (const name of ['position-changed', 'size-changed', 'notify::fullscreen',
                 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized', 'workspace-changed'])
@@ -283,10 +302,33 @@ export class FocusBorder {
             // A borda acompanha a janela DURANTE as animações (mesma posição, escala e
             // opacidade do actor): passa à frente / aparece / desvanece com ela.
             const rect = this._visualRect(win, actor);
-            this._area.set_position(Math.round(rect.x - w), Math.round(rect.y - w));
-            this._area.set_size(Math.max(1, Math.round(rect.width + 2 * w)), Math.max(1, Math.round(rect.height + 2 * w)));
+            const target = {
+                x: Math.round(rect.x - w), y: Math.round(rect.y - w),
+                width: Math.max(1, Math.round(rect.width + 2 * w)), height: Math.max(1, Math.round(rect.height + 2 * w)),
+            };
             const wasVisible = this._area.visible;
-            global.window_group.set_child_above_sibling(this._area, actor);
+            if (this._slideFrom && wasVisible) {
+                const from = this._slideFrom;
+                this._slideFrom = null;
+                this._area.remove_all_transitions();
+                this._area.set_position(from.x, from.y);
+                this._area.set_size(from.width, from.height);
+                this._sliding = true;
+                this._area.ease({
+                    ...target,
+                    duration: this._settings.focusBorderSlideDuration,
+                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    onStopped: () => {
+                        this._sliding = false;
+                        this._update();
+                    },
+                });
+            } else if (!this._sliding) {
+                this._slideFrom = null;
+                this._area.set_position(target.x, target.y);
+                this._area.set_size(target.width, target.height);
+            }
+            this._raise(actor);
             this._area.show();
             this._applyOpacity(win, actor, wasVisible);
             this._area.queue_repaint();

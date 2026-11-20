@@ -22,6 +22,33 @@ import {WindowAnimator} from './ui/window-animator.js';
 export default class AutoTilerExtension extends Extension {
     enable() {
         this._settings = new TilerSettings(this.getSettings());
+        // Os números dos workspaces vivem também no ecrã de bloqueio (session-modes inclui
+        // 'unlock-dialog'); todo o resto (tiling, bordas, atalhos) só corre com a sessão desbloqueada.
+        this._numbers = null;
+        try {
+            this._numbers = new WorkspaceNumbers(this._settings);
+        } catch (e) {
+            console.error('[auto-tiler]', e);
+        }
+        this._modeId = Main.sessionMode.connect('updated', () => this._syncMode());
+        this._syncMode();
+    }
+
+    _syncMode() {
+        const locked = Main.sessionMode.currentMode === 'unlock-dialog';
+        try {
+            if (locked && this._full)
+                this._stopFull();
+            else if (!locked && !this._full)
+                this._startFull();
+        } catch (e) {
+            console.error('[auto-tiler]', e);
+        }
+        this._numbers?.refresh(locked);
+    }
+
+    _startFull() {
+        this._full = true;
         this._animator = new WindowAnimator();
         this._dropHint = null;
         this._manager = new WindowManager(this._createHost(), this._settings);
@@ -65,7 +92,6 @@ export default class AutoTilerExtension extends Extension {
             () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
             () => new SendBackButton(this._manager),
-            () => new WorkspaceNumbers(this._settings),
             () => new FocusBorder(this._settings, win => this._animator?.isRunning(win) ?? false),
             () => {
                 const border = this._ui.find(piece => piece instanceof FocusBorder);
@@ -110,6 +136,20 @@ export default class AutoTilerExtension extends Extension {
 
     // Em GNOME Shell 51 disable() não pode ser assíncrona.
     disable() {
+        if (this._modeId)
+            Main.sessionMode.disconnect(this._modeId);
+        this._modeId = 0;
+        this._stopFull();
+        this._numbers?.destroy();
+        this._numbers = null;
+        this._settings?.destroy();
+        this._settings = null;
+    }
+
+    _stopFull() {
+        if (!this._full)
+            return;
+        this._full = false;
         if (this._healId)
             GLib.Source.remove(this._healId);
         this._healId = 0;
@@ -151,8 +191,6 @@ export default class AutoTilerExtension extends Extension {
         this._manager = null;
         this._animator?.cancelAll();
         this._animator = null;
-        this._settings?.destroy();
-        this._settings = null;
     }
 
     /** A dock da Dash to Dock: a API da extensão (dash visível) e, como alternativa, o contentor. */

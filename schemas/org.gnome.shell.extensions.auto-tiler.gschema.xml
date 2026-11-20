@@ -136,6 +136,18 @@
       <summary>Duração das animações (ms)</summary>
     </key>
 
+    <key name="open-fade-duration" type="i">
+      <default>380</default>
+      <range min="100" max="1500"/>
+      <summary>Duração do fade ao abrir janelas (ms)</summary>
+    </key>
+
+    <key name="focus-border-fade-duration" type="i">
+      <default>320</default>
+      <range min="80" max="1000"/>
+      <summary>Duração do fade da borda (ms)</summary>
+    </key>
+
     <key name="focus-resize-enabled" type="b">
       <default>true</default>
       <summary>Janela trazida durante fullscreen em tamanho normal</summary>
@@ -181,6 +193,24 @@
       <default>true</default>
       <summary>Números de workspace na barra</summary>
       <description>Mostra os números dos workspaces (o activo realçado) em vez dos pontos do GNOME.</description>
+    </key>
+
+    <key name="workspace-numbers-style" type="s">
+      <default>'pill'</default>
+      <summary>Estilo dos números de workspace</summary>
+      <description>pill, underline, square, dots, plain ou roman.</description>
+    </key>
+
+    <key name="focus-border-slide" type="b">
+      <default>false</default>
+      <summary>Borda desliza para a janela focada</summary>
+      <description>Ao mudar o foco, a borda arrasta-se da janela anterior para a nova, em vez de desvanecer.</description>
+    </key>
+
+    <key name="focus-border-slide-duration" type="i">
+      <default>240</default>
+      <range min="80" max="800"/>
+      <summary>Duração do deslize da borda (ms)</summary>
     </key>
 
     <key name="floating-on-top" type="b">

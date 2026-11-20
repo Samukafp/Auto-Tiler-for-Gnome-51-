@@ -9,7 +9,7 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 const WAIT_OPEN_MS = 500; // aberturas: apps lentas (Nautilus) demoram a assumir o tamanho do tiling
-const SETTLE_MS = 90; // aberturas: o tamanho tem de se manter estável este tempo antes de aparecer
+const SETTLE_MS = 160; // aberturas: o tamanho tem de se manter estável este tempo antes de aparecer
 // aberturas: terminais e outras apps ajustam-se a uma grelha (não chegam ao pixel exacto do slot)
 const OPEN_TOLERANCE_PX = 24;
 const WAIT_MS = 120;
@@ -77,7 +77,7 @@ export class WindowAnimator {
         }
 
         const tol = fade === 0 ? OPEN_TOLERANCE_PX : 2;
-        if (wait && !this._ready(win, actor, to, tol)) {
+        if (wait && (fade === 0 || !this._ready(win, actor, to, tol))) {
             const entry = {actor, fade, to: {...to}, pending: true, ids: [], timeoutId: 0};
             entry.destroyId = actor.connect('destroy', () => {
                 this._abortPending(entry);
@@ -126,6 +126,14 @@ export class WindowAnimator {
                         return GLib.SOURCE_REMOVE;
                     });
                 }));
+            if (open && this._ready(win, actor, entry.to, tol)) {
+                // Já no tamanho final: mesmo assim espera que fique estável (as apps GNOME voltam a
+                // ~90 % um instante depois do primeiro commit: era o "saltinho" visível).
+                entry.settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SETTLE_MS, () => {
+                    settle();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
             entry.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, fade === 0 ? WAIT_OPEN_MS : (soft ? WAIT_MS : WAIT_RESIZE_MS), () => {
                 entry.timeoutId = 0;
                 if (fade === 0)
