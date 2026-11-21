@@ -13,17 +13,77 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         window._settings = settings; // mantém a referência viva enquanto a janela existir
         window.set_default_size(640, 720);
 
-        // Uma aba por assunto (o Adw mostra o seletor de abas no topo).
+        // Todas as linhas são criadas pelas funções abaixo e depois distribuídas por páginas e
+        // grupos pelo título (_layout). Uma linha que não esteja na lista cai em "Outras".
+        this._rows = new Map();
+        const fullscreenInfo = this._focusResizeGroup(settings);
+        this._tilingGroup(settings);
+        this._limitGroup(settings);
+        this._gapsGroup(settings);
+        this._behaviourGroup(settings);
+        this._animationsGroup(settings);
+        this._appearanceGroup(settings);
+        this._floatingGroup(settings);
+        const effects = this._effectsGroup(settings);
+        const shortcuts = this._shortcutsGroup(settings);
+
         const pages = [
-            ['Geral', 'preferences-system-symbolic', [this._tilingGroup(settings), this._limitGroup(settings),
-                this._behaviourGroup(settings), this._focusResizeGroup(settings)]],
-            ['Espaçamentos', 'view-grid-symbolic', [this._gapsGroup(settings)]],
-            ['Borda', 'applications-graphics-symbolic', [this._appearanceGroup(settings)]],
-            ['Animações', 'media-playback-start-symbolic', [this._animationsGroup(settings)]],
-            ['Efeitos', 'applications-science-symbolic', [this._effectsGroup(settings)]],
-            ['Janelas', 'window-new-symbolic', [this._floatingGroup(settings)]],
-            ['Atalhos', 'input-keyboard-symbolic', [this._shortcutsGroup(settings)]],
+            ['Geral', 'preferences-system-symbolic', [
+                this._group('Tiling', 'Como as janelas se organizam', [
+                    'Tiling automático', 'Proporção por omissão', 'Lado onde as janelas novas abrem',
+                    'Janelas novas entram em tiling', 'Trocar janelas ao arrastar']),
+                this._group('Limite por workspace', 'A janela a mais passa para o workspace seguinte', [
+                    'Limitar janelas por workspace', 'Máximo de janelas por workspace']),
+            ]],
+            ['Espaçamentos', 'view-grid-symbolic', [
+                this._group('Espaços entre janelas', null, [
+                    'Usar espaçamentos', 'Espaçamento interno', 'Espaçamento externo',
+                    'Sem espaçamentos com uma só janela']),
+                this._group('Dock', 'Deixa livre a faixa da dock (como o COSMIC)', [
+                    'Deixar espaço para a dock', 'Medir a dock automaticamente', 'Margem extra sobre a dock',
+                    'Altura manual para a dock']),
+            ]],
+            ['Barra', 'view-app-grid-symbolic', [
+                this._group('Números de workspace', 'Na barra superior (também no ecrã de bloqueio)', [
+                    'Números de workspace na barra', 'Estilo dos números de workspace']),
+                this._group('Botões', null, ['Botão de restaurar na barra']),
+            ]],
+            ['Borda', 'applications-graphics-symbolic', [
+                this._group('Aparência', 'Gradiente entre duas cores que gira à volta da janela focada', [
+                    'Mostrar borda', 'Esconder a borda com o tiling desligado', 'Espessura (px)',
+                    'Arredondamento (px)']),
+                this._group('Cores', null, [
+                    'Cores do wallpaper', 'Primeira cor', 'Segunda cor', 'Velocidade do gradiente']),
+                this._group('Animação da borda', 'Ao mudar o foco entre janelas', [
+                    'Borda desliza entre janelas', 'Duração do deslize da borda (ms)',
+                    'Fade da borda ao mudar de foco', 'Duração do fade da borda (ms)']),
+            ]],
+            ['Animações', 'media-playback-start-symbolic', [
+                this._group('Animações', 'Respeitam também a definição de animações do GNOME', [
+                    'Animações', 'Duração das animações (ms)', 'Desmaximizar sem encolher (experimental)']),
+                this._group('Abrir janelas', null, [
+                    'Esconder a janela até ter o tamanho certo', 'Fade ao abrir janelas novas',
+                    'Duração do fade ao abrir (ms)']),
+            ]],
+            ['Janelas', 'window-new-symbolic', [
+                this._group('Flutuantes', 'Diálogos, avisos do sistema e as definições de extensões são sempre flutuantes', [
+                    'Janelas flutuantes sempre à frente', 'Tiling em reprodutores de vídeo',
+                    'Aplicações flutuantes (WM_CLASS / app-id, separados por vírgulas)']),
+                this._group('Tamanho', null, ['Tamanho das janelas normais (%)']),
+                this._fullscreenGroup(fullscreenInfo),
+            ]],
+            ['Efeitos', 'applications-science-symbolic', [effects]],
+            ['Atalhos', 'input-keyboard-symbolic', [shortcuts]],
+            ['Avançado', 'emblem-system-symbolic', [this._advancedGroup(window, settings)]],
         ];
+        // Qualquer linha que não tenha sido colocada (nunca se perde uma opção).
+        if (this._rows.size > 0) {
+            const other = new Adw.PreferencesGroup({title: 'Outras'});
+            for (const row of this._rows.values())
+                other.add(row);
+            this._rows.clear();
+            pages[pages.length - 1][2].unshift(other);
+        }
         for (const [title, icon, groups] of pages) {
             const page = new Adw.PreferencesPage({title, icon_name: icon});
             for (const group of groups)
@@ -32,13 +92,73 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         }
     }
 
-    _focusResizeGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Janela trazida durante fullscreen',
-            description: 'Com outra janela em fullscreen ou maximizada, uma janela que estava em tiling e é trazida ' +
-                '(por exemplo, pela barra de tarefas) aparece flutuante em 16:9, em tamanho normal. ' +
-                'Ao sair do fullscreen, tudo volta ao layout.',
+    /** Recolhe as linhas (por título) em vez de as pôr já num grupo. */
+    _rec() {
+        return {add: row => this._rows.set(row.title, row)};
+    }
+
+    /** Grupo com as linhas indicadas, por ordem; títulos desconhecidos são ignorados. */
+    _group(title, description, titles) {
+        const group = new Adw.PreferencesGroup({title});
+        if (description)
+            group.set_description(description);
+        for (const t of titles) {
+            const row = this._rows.get(t);
+            if (!row) {
+                console.warn(`[auto-tiler] prefs: linha em falta: ${t}`);
+                continue;
+            }
+            this._rows.delete(t);
+            group.add(row);
+        }
+        return group;
+    }
+
+    _fullscreenGroup(info) {
+        const group = this._group('Janela trazida durante fullscreen', null, ['Mostrar em tamanho normal', 'A partir de', 'Até']);
+        group.set_description(info.description);
+        return group;
+    }
+
+    _advancedGroup(window, settings) {
+        const group = new Adw.PreferencesGroup({title: 'Manutenção'});
+        const about = new Adw.ActionRow({
+            title: 'Auto Tiler',
+            subtitle: `Versão ${this.metadata['version-name'] ?? '?'}`,
         });
+        group.add(about);
+
+        const reset = new Adw.ActionRow({
+            title: 'Repor todas as definições',
+            subtitle: 'Volta aos valores por omissão. Não pode ser desfeito',
+        });
+        const button = new Gtk.Button({label: 'Repor', valign: Gtk.Align.CENTER, css_classes: ['destructive-action']});
+        button.connect('clicked', () => {
+            const dialog = new Adw.AlertDialog({
+                heading: 'Repor todas as definições?',
+                body: 'Todas as opções do Auto Tiler voltam ao valor por omissão.',
+            });
+            dialog.add_response('cancel', 'Cancelar');
+            dialog.add_response('reset', 'Repor');
+            dialog.set_response_appearance('reset', Adw.ResponseAppearance.DESTRUCTIVE);
+            dialog.connect('response', (_d, response) => {
+                if (response !== 'reset')
+                    return;
+                for (const key of settings.settings_schema.list_keys())
+                    settings.reset(key);
+            });
+            dialog.present(window);
+        });
+        reset.add_suffix(button);
+        group.add(reset);
+        return group;
+    }
+
+    _focusResizeGroup(settings) {
+        const group = this._rec();
+        group.description = 'Com outra janela em fullscreen ou maximizada, uma janela que estava em tiling e é trazida ' +
+            '(por exemplo, pela barra de tarefas) aparece flutuante em 16:9, em tamanho normal. ' +
+            'Ao sair do fullscreen, tudo volta ao layout.';
 
         const enabled = new Adw.SwitchRow({title: 'Mostrar em tamanho normal'});
         settings.bind('focus-resize-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -115,10 +235,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _limitGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Limite por ambiente de trabalho',
-            description: 'Janelas minimizadas, flutuantes e de outros workspaces não contam para o limite.',
-        });
+        const group = this._rec();
 
         const enabled = new Adw.SwitchRow({
             title: 'Limitar janelas por workspace',
@@ -140,10 +257,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _tilingGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Tiling',
-            description: 'A maximização e o fullscreen nativos do GNOME nunca são alterados.',
-        });
+        const group = this._rec();
 
         const enabled = new Adw.SwitchRow({
             title: 'Tiling automático',
@@ -165,10 +279,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _gapsGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Espaçamentos',
-            description: 'Aplicam-se apenas a janelas em tiling. Alterações têm efeito imediato.',
-        });
+        const group = this._rec();
 
         const enabled = new Adw.SwitchRow({title: 'Usar espaçamentos'});
         settings.bind('gaps-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -222,9 +333,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _behaviourGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Comportamento',
-        });
+        const group = this._rec();
 
         const size = new Adw.SpinRow({
             title: 'Tamanho das janelas normais (%)',
@@ -304,10 +413,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _animationsGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Animações',
-            description: 'Tudo o que se move ou desvanece. Respeitam também a definição de animações do GNOME.',
-        });
+        const group = this._rec();
 
         const anim = new Adw.SwitchRow({
             title: 'Animações',
@@ -388,7 +494,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _appearanceGroup(settings) {
-        const group = new Adw.PreferencesGroup({title: 'Borda da janela focada', description: 'Gradiente entre duas cores que gira à volta da janela.'});
+        const group = this._rec();
 
         const enabled = new Adw.SwitchRow({title: 'Mostrar borda'});
         settings.bind('focus-border-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -460,10 +566,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
     }
 
     _floatingGroup(settings) {
-        const group = new Adw.PreferencesGroup({
-            title: 'Janelas flutuantes',
-            description: 'Diálogos, janelas transitórias, avisos do sistema e as definições de extensões são sempre flutuantes.',
-        });
+        const group = this._rec();
 
         const video = new Adw.SwitchRow({
             title: 'Tiling em reprodutores de vídeo',
