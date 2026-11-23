@@ -5,13 +5,31 @@ import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
+import {WORKSPACE_STYLES} from './lib/workspace-styles.js';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+
+// Predefinições de animação (null = valor por omissão do schema).
+const PRESETS = {
+    fast: {
+        'animations-enabled': false, 'animate-open': false, 'hide-until-sized': true,
+        'focus-border-slide': false, 'focus-border-fade-on-focus': false,
+    },
+    balanced: {
+        'animations-enabled': null, 'animation-duration': null, 'animate-open': null, 'hide-until-sized': null,
+        'open-fade-duration': null, 'focus-border-slide': null, 'focus-border-slide-duration': null,
+        'focus-border-fade-on-focus': null, 'focus-border-fade-duration': null,
+    },
+    fancy: {
+        'animations-enabled': true, 'animation-duration': 320, 'animate-open': true, 'hide-until-sized': true,
+        'open-fade-duration': 460, 'focus-border-slide': true, 'focus-border-slide-duration': 300,
+    },
+};
 
 export default class AutoTilerPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window._settings = settings; // mantém a referência viva enquanto a janela existir
-        window.set_default_size(640, 720);
+        window.set_default_size(760, 720);
 
         // Todas as linhas são criadas pelas funções abaixo e depois distribuídas por páginas e
         // grupos pelo título (_layout). Uma linha que não esteja na lista cai em "Outras".
@@ -27,6 +45,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         const effects = this._effectsGroup(settings);
         const shortcuts = this._shortcutsGroup(settings);
 
+        // Cinco abas curtas: cabem na barra de baixo mesmo numa janela estreita.
         const pages = [
             ['Geral', 'preferences-system-symbolic', [
                 this._group('Tiling', 'Como as janelas se organizam', [
@@ -34,47 +53,39 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                     'Janelas novas entram em tiling', 'Trocar janelas ao arrastar']),
                 this._group('Limite por workspace', 'A janela a mais passa para o workspace seguinte', [
                     'Limitar janelas por workspace', 'Máximo de janelas por workspace']),
+                this._group('Janelas flutuantes', 'Diálogos, avisos do sistema e as definições de extensões são sempre flutuantes', [
+                    'Janelas flutuantes sempre à frente', 'Tiling em reprodutores de vídeo',
+                    'Aplicações flutuantes (WM_CLASS / app-id, separados por vírgulas)']),
+                this._group('Fora do tiling', null, ['Tamanho das janelas normais (%)']),
+                this._fullscreenGroup(fullscreenInfo),
             ]],
-            ['Espaçamentos', 'view-grid-symbolic', [
+            ['Aspeto', 'applications-graphics-symbolic', [
                 this._group('Espaços entre janelas', null, [
                     'Usar espaçamentos', 'Espaçamento interno', 'Espaçamento externo',
                     'Sem espaçamentos com uma só janela']),
                 this._group('Dock', 'Deixa livre a faixa da dock (como o COSMIC)', [
                     'Deixar espaço para a dock', 'Medir a dock automaticamente', 'Margem extra sobre a dock',
                     'Altura manual para a dock']),
-            ]],
-            ['Barra', 'view-app-grid-symbolic', [
-                this._group('Números de workspace', 'Na barra superior (também no ecrã de bloqueio)', [
-                    'Números de workspace na barra', 'Estilo dos números de workspace']),
-                this._group('Botões', null, ['Botão de restaurar na barra']),
-            ]],
-            ['Borda', 'applications-graphics-symbolic', [
-                this._group('Aparência', 'Gradiente entre duas cores que gira à volta da janela focada', [
+                this._group('Borda da janela focada', 'Gradiente entre duas cores que gira à volta da janela', [
                     'Mostrar borda', 'Esconder a borda com o tiling desligado', 'Espessura (px)',
-                    'Arredondamento (px)']),
-                this._group('Cores', null, [
-                    'Cores do wallpaper', 'Primeira cor', 'Segunda cor', 'Velocidade do gradiente']),
-                this._group('Animação da borda', 'Ao mudar o foco entre janelas', [
+                    'Arredondamento (px)', 'Cores do wallpaper', 'Primeira cor', 'Segunda cor',
+                    'Velocidade do gradiente']),
+                this._group('Barra superior', 'Também no ecrã de bloqueio', [
+                    'Números de workspace na barra', 'Estilo dos números de workspace',
+                    'Botão de restaurar na barra']),
+            ]],
+            ['Animações', 'media-playback-start-symbolic', [
+                this._presetsGroup(settings),
+                this._group('Janelas', 'Respeitam também a definição de animações do GNOME', [
+                    'Animações', 'Duração das animações (ms)', 'Desmaximizar sem encolher (experimental)',
+                    'Esconder a janela até ter o tamanho certo', 'Fade ao abrir janelas novas',
+                    'Duração do fade ao abrir (ms)']),
+                this._group('Borda', 'Ao mudar o foco entre janelas', [
                     'Borda desliza entre janelas', 'Duração do deslize da borda (ms)',
                     'Fade da borda ao mudar de foco', 'Duração do fade da borda (ms)']),
             ]],
-            ['Animações', 'media-playback-start-symbolic', [
-                this._group('Animações', 'Respeitam também a definição de animações do GNOME', [
-                    'Animações', 'Duração das animações (ms)', 'Desmaximizar sem encolher (experimental)']),
-                this._group('Abrir janelas', null, [
-                    'Esconder a janela até ter o tamanho certo', 'Fade ao abrir janelas novas',
-                    'Duração do fade ao abrir (ms)']),
-            ]],
-            ['Janelas', 'window-new-symbolic', [
-                this._group('Flutuantes', 'Diálogos, avisos do sistema e as definições de extensões são sempre flutuantes', [
-                    'Janelas flutuantes sempre à frente', 'Tiling em reprodutores de vídeo',
-                    'Aplicações flutuantes (WM_CLASS / app-id, separados por vírgulas)']),
-                this._group('Tamanho', null, ['Tamanho das janelas normais (%)']),
-                this._fullscreenGroup(fullscreenInfo),
-            ]],
-            ['Efeitos', 'applications-science-symbolic', [effects]],
             ['Atalhos', 'input-keyboard-symbolic', [shortcuts]],
-            ['Avançado', 'emblem-system-symbolic', [this._advancedGroup(window, settings)]],
+            ['Avançado', 'emblem-system-symbolic', [effects, this._advancedGroup(window, settings)]],
         ];
         // Qualquer linha que não tenha sido colocada (nunca se perde uma opção).
         if (this._rows.size > 0) {
@@ -111,6 +122,39 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             this._rows.delete(t);
             group.add(row);
         }
+        return group;
+    }
+
+    /** Predefinições de animação: um clique ajusta várias opções (podem afinar-se depois). */
+    _presetsGroup(settings) {
+        const group = new Adw.PreferencesGroup({
+            title: 'Predefinições',
+            description: 'Um clique ajusta as animações todas; depois podes afinar uma a uma',
+        });
+        const row = new Adw.ActionRow({
+            title: 'Estilo das animações',
+            subtitle: 'Rápido: sem efeitos · Equilibrado: o normal · Vistoso: mais suave e com a borda a deslizar',
+        });
+        const apply = values => () => {
+            for (const [key, value] of Object.entries(values)) {
+                if (value === null)
+                    settings.reset(key);
+                else if (typeof value === 'boolean')
+                    settings.set_boolean(key, value);
+                else
+                    settings.set_int(key, value);
+            }
+        };
+        const box = new Gtk.Box({spacing: 6, valign: Gtk.Align.CENTER});
+        for (const [label, values] of [
+            ['Rápido', PRESETS.fast], ['Equilibrado', PRESETS.balanced], ['Vistoso', PRESETS.fancy],
+        ]) {
+            const button = new Gtk.Button({label});
+            button.connect('clicked', apply(values));
+            box.append(button);
+        }
+        row.add_suffix(box);
+        group.add(row);
         return group;
     }
 
@@ -371,9 +415,17 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             subtitle: 'As janelas novas entram à direita ou à esquerda das que já existem',
             model: Gtk.StringList.new(['Direita', 'Esquerda']),
         });
-        sideRow.selected = settings.get_string('open-side') === 'left' ? 1 : 0;
-        sideRow.connect('notify::selected', () =>
-            settings.set_string('open-side', sideRow.selected === 1 ? 'left' : 'right'));
+        const sideIndex = () => (settings.get_string('open-side') === 'left' ? 1 : 0);
+        sideRow.selected = sideIndex();
+        sideRow.connect('notify::selected', () => {
+            const side = sideRow.selected === 1 ? 'left' : 'right';
+            if (side !== settings.get_string('open-side'))
+                settings.set_string('open-side', side);
+        });
+        settings.connect('changed::open-side', () => {
+            if (sideRow.selected !== sideIndex())
+                sideRow.selected = sideIndex();
+        });
         group.add(sideRow);
 
         const onTop = new Adw.SwitchRow({
@@ -390,15 +442,23 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('workspace-numbers', wsNumbers, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(wsNumbers);
 
-        const STYLE_IDS = ['pill', 'accent', 'glass', 'circle', 'underline', 'square', 'bracket', 'kanji', 'dots', 'plain', 'roman'];
         const styleRow = new Adw.ComboRow({
             title: 'Estilo dos números de workspace',
             subtitle: 'Muda também no ecrã de bloqueio',
-            model: Gtk.StringList.new(['Comprimido', 'Cor de destaque', 'Vidro', 'Círculo', 'Sublinhado', 'Quadrado', 'Parênteses [2]', 'Japonês (一 二 三)', 'Pontos', 'Texto simples', 'Romanos']),
+            model: Gtk.StringList.new(WORKSPACE_STYLES.map(([, name]) => name)),
         });
-        styleRow.selected = Math.max(0, STYLE_IDS.indexOf(settings.get_string('workspace-numbers-style')));
-        styleRow.connect('notify::selected', () =>
-            settings.set_string('workspace-numbers-style', STYLE_IDS[styleRow.selected] ?? 'pill'));
+        const styleIndex = () => Math.max(0, WORKSPACE_STYLES.findIndex(([id]) => id === settings.get_string('workspace-numbers-style')));
+        styleRow.selected = styleIndex();
+        styleRow.connect('notify::selected', () => {
+            const id = WORKSPACE_STYLES[styleRow.selected]?.[0] ?? 'pill';
+            if (id !== settings.get_string('workspace-numbers-style'))
+                settings.set_string('workspace-numbers-style', id);
+        });
+        // Repor/predefinições mudam a chave por fora: a linha acompanha.
+        settings.connect('changed::workspace-numbers-style', () => {
+            if (styleRow.selected !== styleIndex())
+                styleRow.selected = styleIndex();
+        });
         settings.bind('workspace-numbers', styleRow, 'sensitive', Gio.SettingsBindFlags.GET);
         group.add(styleRow);
 
@@ -531,15 +591,26 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                 valign: Gtk.Align.CENTER,
                 dialog: new Gtk.ColorDialog(),
             });
-            const rgba = new Gdk.RGBA();
-            if (!rgba.parse(settings.get_string(key)))
-                rgba.parse(fallback);
-            button.rgba = rgba;
+            let syncing = false;
+            const load = () => {
+                const rgba = new Gdk.RGBA();
+                if (!rgba.parse(settings.get_string(key)))
+                    rgba.parse(fallback);
+                syncing = true;
+                button.rgba = rgba;
+                syncing = false;
+            };
+            load();
             button.connect('notify::rgba', () => {
+                if (syncing)
+                    return;
                 const c = button.rgba;
                 const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
-                settings.set_string(key, `#${hex(c.red)}${hex(c.green)}${hex(c.blue)}`);
+                const value = `#${hex(c.red)}${hex(c.green)}${hex(c.blue)}`;
+                if (value !== settings.get_string(key))
+                    settings.set_string(key, value);
             });
+            settings.connect(`changed::${key}`, load); // "Repor" muda a chave por fora
             row.add_suffix(button);
             manualRows.push(row);
             group.add(row);
@@ -584,6 +655,11 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             const list = classes.text.split(',').map(s => s.trim()).filter(Boolean);
             settings.set_strv('float-wm-classes', list);
         });
+        settings.connect('changed::float-wm-classes', () => {
+            const text = settings.get_strv('float-wm-classes').join(', ');
+            if (classes.text !== text)
+                classes.text = text;
+        });
         group.add(classes);
 
         return group;
@@ -625,6 +701,11 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                 } else {
                     row.add_css_class('error');
                 }
+            });
+            settings.connect(`changed::${key}`, () => {
+                const text = settings.get_strv(key)[0] ?? '';
+                if (row.text !== text)
+                    row.text = text;
             });
             group.add(row);
         }

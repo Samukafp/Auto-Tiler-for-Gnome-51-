@@ -2,6 +2,7 @@
 // Só este ficheiro, prefs.js e ui/*.js importam módulos do Shell/GI; o resto do
 // código é independente e testável em Node através do objecto `host`.
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -21,6 +22,7 @@ import {WindowAnimator} from './ui/window-animator.js';
 
 export default class AutoTilerExtension extends Extension {
     enable() {
+        this._full = false; // tiling completo a correr? (só com a sessão desbloqueada)
         this._settings = new TilerSettings(this.getSettings());
         // Os números dos workspaces vivem também no ecrã de bloqueio (session-modes inclui
         // 'unlock-dialog'); todo o resto (tiling, bordas, atalhos) só corre com a sessão desbloqueada.
@@ -142,6 +144,7 @@ export default class AutoTilerExtension extends Extension {
         this._stopFull();
         this._numbers?.destroy();
         this._numbers = null;
+        this._keyboard = null;
         this._settings?.destroy();
         this._settings = null;
     }
@@ -258,6 +261,28 @@ export default class AutoTilerExtension extends Extension {
             hideDropHint: () => this._dropHint?.hide(),
             // Há um arrasto/redimensionamento do utilizador a decorrer?
             grabActive: () => global.display.get_grab_op() !== Meta.GrabOp.NONE,
+            // O Mutter 51 já não tem end_grab_op: cancela-se o redimensionamento como o Esc do
+            // utilizador faz (o Mutter devolve a janela ao tamanho de antes do arrasto).
+            isResizeGrab: op => ['RESIZING_N', 'RESIZING_NE', 'RESIZING_E', 'RESIZING_SE', 'RESIZING_S', 'RESIZING_SW',
+                'RESIZING_W', 'RESIZING_NW'].some(name => Meta.GrabOp[name] !== undefined && Meta.GrabOp[name] === op),
+            isMoveGrab: op => Meta.GrabOp.MOVING !== undefined && Meta.GrabOp.MOVING === op,
+            // Arestas pegadas num redimensionamento ('n','se',...), ou '' se não for reconhecido.
+            resizeSides: op => {
+                const name = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].find(n => Meta.GrabOp[`RESIZING_${n}`] !== undefined &&
+                    Meta.GrabOp[`RESIZING_${n}`] === op);
+                return name ? name.toLowerCase() : '';
+            },
+            endGrab: () => {
+                try {
+                    this._keyboard ??= global.stage.context.get_backend().get_default_seat()
+                        .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+                    const now = GLib.get_monotonic_time();
+                    this._keyboard.notify_keyval(now, Clutter.KEY_Escape, Clutter.KeyState.PRESSED);
+                    this._keyboard.notify_keyval(now + 1000, Clutter.KEY_Escape, Clutter.KeyState.RELEASED);
+                } catch (e) {
+                    console.error('[auto-tiler] não consegui terminar o arrasto:', e);
+                }
+            },
             pointer: () => {
                 const [x, y] = global.get_pointer();
                 return {x, y};

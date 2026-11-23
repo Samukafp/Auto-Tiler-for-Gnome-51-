@@ -18,6 +18,10 @@ const FRAME_MS = 33;
 // Tempo mínimo desde o 'map' da janela antes de mostrar a borda: cobre a animação de abrir do Shell.
 const MAP_SETTLE_MS = 450;
 const FADE_IN_MS = 320;
+// Sinais de estado do Mutter (fullscreen, maximizar...): nunca mexer em actores/ordem das janelas dentro deles
+// (sair de fullscreen a meio de uma reordenação fazia o Shell crashar); adia-se para depois.
+const STATE_SIGNALS = ['notify::fullscreen', 'notify::maximized-horizontally', 'notify::maximized-vertically',
+    'notify::minimized', 'workspace-changed'];
 const MIRROR_PROPS = ['visible', 'opacity', 'scale-x', 'scale-y', 'translation-x', 'translation-y'];
 
 export class FocusBorder {
@@ -166,7 +170,7 @@ export class FocusBorder {
             this._win = win;
             for (const name of ['position-changed', 'size-changed', 'notify::fullscreen',
                 'notify::maximized-horizontally', 'notify::maximized-vertically', 'notify::minimized', 'workspace-changed'])
-                this._winSignals.push(win.connect(name, () => this._update()));
+                this._winSignals.push(win.connect(name, () => (STATE_SIGNALS.includes(name) ? this._updateLater() : this._update())));
             // A janela está a fechar: a borda desaparece já, não fica sozinha.
             this._winSignals.push(win.connect('unmanaging', () => {
                 this._unfollowWindow();
@@ -269,6 +273,17 @@ export class FocusBorder {
         return left;
     }
 
+    _updateLater() {
+        this._area.hide(); // só o nosso actor: seguro; o resto espera
+        if (this._laterId)
+            return;
+        this._laterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._laterId = 0;
+            this._update();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _update() {
         const win = this._win;
         try {
@@ -318,7 +333,11 @@ export class FocusBorder {
                     ...target,
                     duration: this._settings.focusBorderSlideDuration,
                     mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-                    onStopped: () => {
+                    // Só quando CHEGA ao fim: se for interrompida (esconder, novo deslize), quem a
+                    // interrompeu trata do estado (evita reentrar em _update dentro do remove_all_transitions).
+                    onStopped: finished => {
+                        if (finished === false)
+                            return;
                         this._sliding = false;
                         this._update();
                     },
@@ -437,6 +456,10 @@ export class FocusBorder {
     }
 
     destroy() {
+        if (this._laterId) {
+            GLib.Source.remove(this._laterId);
+            this._laterId = 0;
+        }
         this._stopTimer();
         this._stopGuard();
         if (this._settleSource)
