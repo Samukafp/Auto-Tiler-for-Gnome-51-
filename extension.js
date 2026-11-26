@@ -10,9 +10,13 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {EffectsController} from './lib/effects.js';
+import {moveToLaunchWorkspace} from './lib/fullscreen-launch.js';
 import {TilerSettings} from './lib/settings.js';
+import {StartupGuard} from './lib/startup.js';
 import {WindowManager} from './lib/window-manager.js';
 import {DropHint} from './ui/drop-hint.js';
+import {FloatingPanel} from './ui/floating-panel.js';
+import {NativeEffects} from './ui/native-effects.js';
 import {FocusBorder} from './ui/focus-border.js';
 import {QuickSettingsToggle} from './ui/quick-settings.js';
 import {RestoreLayoutButton} from './ui/restore-button.js';
@@ -22,6 +26,9 @@ import {WindowAnimator} from './ui/window-animator.js';
 
 export default class AutoTilerExtension extends Extension {
     enable() {
+        this._startupGuard ??= new StartupGuard(
+            () => Math.floor(GLib.get_monotonic_time() / 1000),
+            () => Main.layoutManager?._startingUp);
         this._full = false; // tiling completo a correr? (só com a sessão desbloqueada)
         this._settings = new TilerSettings(this.getSettings());
         // Os números dos workspaces vivem também no ecrã de bloqueio (session-modes inclui
@@ -94,6 +101,10 @@ export default class AutoTilerExtension extends Extension {
             () => new QuickSettingsToggle(this._settings.gsettings, this.path),
             () => new RestoreLayoutButton(this._manager, this._settings),
             () => new SendBackButton(this._manager),
+            () => new FloatingPanel(this._settings, {startupBusy: () => this._startupGuard.active()}),
+            () => new NativeEffects(this._settings, win => this._manager?.restoreSolo(win) ?? false,
+                win => this._manager?.soloRestoreTarget(win) ?? null,
+                () => this._startupGuard.active()),
             () => new FocusBorder(this._settings, win => this._animator?.isRunning(win) ?? false),
             () => {
                 const border = this._ui.find(piece => piece instanceof FocusBorder);
@@ -235,12 +246,21 @@ export default class AutoTilerExtension extends Extension {
 
     _createHost() {
         const animator = this._animator;
+        let windowGrabActive = false;
         return {
             display: global.display,
             shellWm: global.window_manager,
             workspaceManager: global.workspace_manager,
             layoutManager: Main.layoutManager,
             windowTypeNormal: Meta.WindowType.NORMAL,
+            dialogTypes: [Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG],
+            monitorGeometry: monitor => Main.layoutManager.monitors[monitor],
+            addIdle: callback => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                callback();
+                return GLib.SOURCE_REMOVE;
+            }),
+            // Espaço que a barra flutuante deixaria no topo se estivesse flutuante (0 se já o está a ocupar).
+            barInset: (monitor, area) => this._ui?.find(piece => piece instanceof FloatingPanel)?.dockedInset(monitor, area) ?? 0,
             listWindows: () => global.get_window_actors()
                 .map(actor => actor.meta_window)
                 .filter(win => win !== null),
@@ -256,15 +276,52 @@ export default class AutoTilerExtension extends Extension {
                     manager.append_new_workspace(false, global.get_current_time());
                 win.change_workspace_by_index(index, false);
             },
+            isolateFullscreenLaunch: (win, source, follow) => {
+                const monitor = win.get_monitor();
+                if (monitor < 0 || (Meta.prefs_get_workspaces_only_on_primary() &&
+                    monitor !== Main.layoutManager.primaryIndex))
+                    return false; // não teletransportar a app para outro monitor
+                return moveToLaunchWorkspace({
+                    manager: global.workspace_manager, win, source, follow,
+                    dynamic: Meta.prefs_get_dynamic_workspaces(),
+                    timestamp: global.get_current_time(),
+                });
+            },
             inFullscreen: () => Main.layoutManager.monitors.some(m => m.inFullscreen),
             showDropHint: rect => this._dropHint?.show(rect),
             hideDropHint: () => this._dropHint?.hide(),
             // Há um arrasto/redimensionamento do utilizador a decorrer?
-            grabActive: () => global.display.get_grab_op() !== Meta.GrabOp.NONE,
+            // GNOME 51 removeu get_grab_op do Display: usa os sinais do Mutter.
+            setGrabActive: active => { windowGrabActive = active; },
+            grabActive: () => typeof global.display.get_grab_op === 'function'
+                ? global.display.get_grab_op() !== Meta.GrabOp.NONE : windowGrabActive,
             // O Mutter 51 já não tem end_grab_op: cancela-se o redimensionamento como o Esc do
             // utilizador faz (o Mutter devolve a janela ao tamanho de antes do arrasto).
             isResizeGrab: op => ['RESIZING_N', 'RESIZING_NE', 'RESIZING_E', 'RESIZING_SE', 'RESIZING_S', 'RESIZING_SW',
                 'RESIZING_W', 'RESIZING_NW'].some(name => Meta.GrabOp[name] !== undefined && Meta.GrabOp[name] === op),
+            // Pré-visualização só do actor (sem pedir tamanho à janela): estica-se em torno do canto
+            // da moldura até ao tamanho que a janela vai ter. (Cortar com set_clip em vez de comprimir
+            // não tem efeito no GNOME 51, confirmado pelo utilizador na 1.5.0.)
+            previewRect: (win, rect) => {
+                const actor = win.get_compositor_private();
+                const f = win.get_frame_rect();
+                if (!actor || f.width <= 0 || f.height <= 0 || actor.width <= 0 || actor.height <= 0)
+                    return;
+                actor.set_pivot_point((f.x - actor.x) / actor.width, (f.y - actor.y) / actor.height);
+                actor.scale_x = rect.width / f.width;
+                actor.scale_y = rect.height / f.height;
+                actor.translation_x = rect.x - f.x;
+                actor.translation_y = rect.y - f.y;
+            },
+            clearPreview: win => {
+                const actor = win.get_compositor_private();
+                if (!actor)
+                    return;
+                actor.scale_x = 1;
+                actor.scale_y = 1;
+                actor.translation_x = 0;
+                actor.translation_y = 0;
+            },
             isMoveGrab: op => Meta.GrabOp.MOVING !== undefined && Meta.GrabOp.MOVING === op,
             // Arestas pegadas num redimensionamento ('n','se',...), ou '' se não for reconhecido.
             resizeSides: op => {
@@ -287,7 +344,8 @@ export default class AutoTilerExtension extends Extension {
                 const [x, y] = global.get_pointer();
                 return {x, y};
             },
-            animationsAllowed: () => animator.allowed(),
+            startupBusy: () => this._startupGuard.active(),
+            animationsAllowed: () => !this._startupGuard.active() && animator.allowed(),
             animateWindow: (win, from, to, ms, fade, soft, wait) => animator.animate(win, from, to, ms, fade, soft, wait),
             activate: win => win.activate(global.get_current_time()),
             setOpacity: (win, value) => {
@@ -306,21 +364,7 @@ export default class AutoTilerExtension extends Extension {
                 actor.set_pivot_point(0, 0);
                 actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0});
             },
-            // Corre antes do próximo frame, FORA do sinal do Mutter (reentrar no Mutter dentro de
-            // notify::maximized fez o Shell crashar).
-            beforeRedraw: fn => {
-                const laters = global.compositor.get_laters?.();
-                if (laters)
-                    laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
-                        fn();
-                        return GLib.SOURCE_REMOVE;
-                    });
-                else
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                        fn();
-                        return GLib.SOURCE_REMOVE;
-                    });
-            },
+            canCancelForStateChange: win => !win.get_compositor_private()?.__animationInfo,
             // Altura da Dash to Dock em baixo no monitor principal (0 se não houver).
             dockHeight: () => {
                 try {

@@ -50,9 +50,11 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
             ['Geral', 'preferences-system-symbolic', [
                 this._group('Tiling', 'Como as janelas se organizam', [
                     'Tiling automático', 'Proporção por omissão', 'Lado onde as janelas novas abrem',
-                    'Janelas novas entram em tiling', 'Trocar janelas ao arrastar']),
+                    'Janelas novas entram em tiling', 'Esticar as vizinhas ao redimensionar (experimental)',
+                    'Sem animação nativa ao maximizar/desmaximizar (experimental)', 'Trocar janelas ao arrastar']),
                 this._group('Limite por workspace', 'A janela a mais passa para o workspace seguinte', [
-                    'Limitar janelas por workspace', 'Máximo de janelas por workspace']),
+                    'Limitar janelas por workspace', 'Máximo de janelas por workspace',
+                    'Abrir em ecrã inteiro num workspace à parte']),
                 this._group('Janelas flutuantes', 'Diálogos, avisos do sistema e as definições de extensões são sempre flutuantes', [
                     'Janelas flutuantes sempre à frente', 'Tiling em reprodutores de vídeo',
                     'Aplicações flutuantes (WM_CLASS / app-id, separados por vírgulas)']),
@@ -71,6 +73,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
                     'Arredondamento (px)', 'Cores do wallpaper', 'Primeira cor', 'Segunda cor',
                     'Velocidade do gradiente']),
                 this._group('Barra superior', 'Também no ecrã de bloqueio', [
+                    'Barra flutuante', 'Arredondamento da barra flutuante (px)', 'Distância da barra ao topo (px)', 'Espaço abaixo da barra (px)',
                     'Números de workspace na barra', 'Estilo dos números de workspace',
                     'Botão de restaurar na barra']),
             ]],
@@ -283,7 +286,7 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
 
         const enabled = new Adw.SwitchRow({
             title: 'Limitar janelas por workspace',
-            subtitle: 'Desligado: todas as janelas ficam no mesmo workspace, sem limite',
+            subtitle: 'Desligado: o número de janelas não obriga a mudar de workspace',
         });
         settings.bind('limit-enabled', enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(enabled);
@@ -296,6 +299,13 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('max-windows', max, 'value', Gio.SettingsBindFlags.DEFAULT);
         enabled.bind_property('active', max, 'sensitive', GObject.BindingFlags.SYNC_CREATE);
         group.add(max);
+
+        const fullscreen = new Adw.SwitchRow({
+            title: 'Abrir em ecrã inteiro num workspace à parte',
+            subtitle: 'Só janelas que já arrancam em ecrã inteiro. Ativar ecrã inteiro mais tarde não muda o workspace.',
+        });
+        settings.bind('launch-fullscreen-workspace', fullscreen, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(fullscreen);
 
         return group;
     }
@@ -396,6 +406,20 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('unmaximize-on-open', unmax, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(unmax);
 
+        const preview = new Adw.SwitchRow({
+            title: 'Esticar as vizinhas ao redimensionar (experimental)',
+            subtitle: 'Experimental: durante o arrasto as vizinhas só esticam visualmente (perdem nitidez) e o tamanho real aplica-se ao largar. Desligado, acompanham ao vivo',
+        });
+        settings.bind('resize-preview', preview, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(preview);
+
+        const noSizeFx = new Adw.SwitchRow({
+            title: 'Sem animação nativa de mudança de tamanho',
+            subtitle: 'Suprime o efeito do GNOME ao maximizar, restaurar ou mudar para ecrã inteiro. Só com o tiling ligado',
+        });
+        settings.bind('skip-size-change-effect', noSizeFx, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(noSizeFx);
+
         const swap = new Adw.SwitchRow({
             title: 'Trocar janelas ao arrastar',
             subtitle: 'Arrasta uma janela em tiling para cima de outra para trocarem de lugar',
@@ -462,6 +486,36 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         settings.bind('workspace-numbers', styleRow, 'sensitive', Gio.SettingsBindFlags.GET);
         group.add(styleRow);
 
+        const floating = new Adw.SwitchRow({
+            title: 'Barra flutuante',
+            subtitle: 'Afastada das margens, com cantos arredondados; com janelas maximizadas ou em fullscreen cola-se ao topo',
+        });
+        settings.bind('floating-panel', floating, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(floating);
+
+        const floatingRadius = new Adw.SpinRow({
+            title: 'Arredondamento da barra flutuante (px)',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 40, step_increment: 2}),
+        });
+        settings.bind('floating-panel-radius', floatingRadius, 'value', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('floating-panel', floatingRadius, 'sensitive', Gio.SettingsBindFlags.GET);
+        group.add(floatingRadius);
+
+        for (const [key, title, subtitle] of [
+            ['floating-panel-top', 'Distância da barra ao topo (px)', null],
+            ['floating-panel-bottom', 'Espaço abaixo da barra (px)', 'Onde o tiling das janelas começa, a contar do fundo da barra'],
+        ]) {
+            const row = new Adw.SpinRow({
+                title,
+                adjustment: new Gtk.Adjustment({lower: 0, upper: 40, step_increment: 1}),
+            });
+            if (subtitle)
+                row.subtitle = subtitle;
+            settings.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+            settings.bind('floating-panel', row, 'sensitive', Gio.SettingsBindFlags.GET);
+            group.add(row);
+        }
+
         const restoreBtn = new Adw.SwitchRow({
             title: 'Botão de restaurar na barra',
             subtitle: 'Aparece só quando há alterações manuais ao layout',
@@ -483,8 +537,8 @@ export default class AutoTilerPreferences extends ExtensionPreferences {
         group.add(anim);
 
         const fastUnmax = new Adw.SwitchRow({
-            title: 'Desmaximizar sem encolher (experimental)',
-            subtitle: 'Reposiciona a janela antes do frame seguinte. Se o desktop se comportar mal, desliga',
+            title: 'Regresso rápido ao tiling (experimental)',
+            subtitle: 'Aplica o layout mais cedo ao sair de maximização/ecrã inteiro. Uma janela única já tem regresso rápido por omissão',
         });
         settings.bind('fast-unmaximize', fastUnmax, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(fastUnmax);

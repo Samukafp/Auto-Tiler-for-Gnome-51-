@@ -4,6 +4,7 @@
 // indicador do GNOME volta a aparecer exactamente como estava.
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -73,6 +74,7 @@ const STYLES = {
 
 export {STYLES as WORKSPACE_STYLE_DEFS}; // para os testes
 
+const ENSURE_MS = 700; // depois de a animação do realce ter acabado
 const SLIDE_MS = 220;
 
 /** Procura o SwipeTracker do gesto de troca de workspace (o nome do campo varia entre versões). */
@@ -106,13 +108,24 @@ class AutoTilerWorkspaceNumbers extends PanelMenu.Button {
         this._track = new St.Widget({x_expand: true, y_expand: true});
         this._slider = new St.Widget({visible: false, opacity: 0});
         this._track.add_child(this._slider);
-        this._box = new St.BoxLayout({style: 'spacing: 2px;', y_align: Clutter.ActorAlign.CENTER});
+        this._box = new St.BoxLayout({style: 'spacing: 2px; min-height: 22px;', y_align: Clutter.ActorAlign.CENTER});
         this._stack.add_child(this._track);
         this._stack.add_child(this._box);
         this.add_child(this._stack);
         this._wm = global.workspace_manager;
         this._ids = [
-            [this._wm, this._wm.connect('active-workspace-changed', () => this._rebuild())],
+            [this._wm, this._wm.connect('active-workspace-changed', () => {
+                // Com a barra escondida (app em ecrã inteiro) um gesto/atalho pode ter começado sem
+                // acabar: não deixar o realce preso no número antigo.
+                this._gesture = false;
+                this._rebuild();
+                this._scheduleEnsure();
+            })],
+            // Barra escondida → mostrada (sair do ecrã inteiro): reposicionar o realce sem animar.
+            [this, this.connect('notify::mapped', () => {
+                this._snapSlider();
+                this._scheduleEnsure();
+            })],
             [this._wm, this._wm.connect('notify::n-workspaces', () => this._rebuild())],
             // A posição dos números só é conhecida depois da alocação (e muda com o negrito).
             [this._box, this._box.connect('notify::allocation', () => this._syncSlider(true))],
@@ -212,7 +225,7 @@ class AutoTilerWorkspaceNumbers extends PanelMenu.Button {
         this._target = spot;
         this._slider.remove_all_transitions();
         this._slider.height = this._box.get_height(); // o realce tem a altura dos números
-        if (animate && this._placed) {
+        if (animate && this._placed && this._box.mapped !== false) {
             this._slider.ease({
                 translation_x: spot.x, width: spot.w, duration, mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             });
@@ -222,6 +235,43 @@ class AutoTilerWorkspaceNumbers extends PanelMenu.Button {
             this._slider.opacity = 255;
         }
         this._placed = true;
+    }
+
+    /**
+     * Rede de segurança: pouco depois de cada mudança de workspace (e de a barra reaparecer) o realce tem
+     * de estar mesmo no número activo. Compara a posição REAL do realce (não a que pedimos), porque com a
+     * barra escondida (jogo/filme em ecrã inteiro) a animação pode nunca ter corrido.
+     */
+    _scheduleEnsure() {
+        if (this._ensureTimer)
+            GLib.Source.remove(this._ensureTimer);
+        this._ensureTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ENSURE_MS, () => {
+            this._ensureTimer = 0;
+            this._ensureSlider();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _ensureSlider() {
+        if (!this._style.slider || !this._slider)
+            return;
+        const spot = this._spot(this._wm.get_active_workspace_index());
+        if (!spot)
+            return;
+        if (Math.abs(this._slider.translation_x - spot.x) < 0.5 && Math.abs(this._slider.width - spot.w) < 0.5)
+            return;
+        console.log(`[auto-tiler] números: realce corrigido (estava em x=${Math.round(this._slider.translation_x)}, devia estar em x=${Math.round(spot.x)}; gesto=${this._gesture})`);
+        this._gesture = false;
+        this._moveSlider(spot, false);
+    }
+
+    /** Põe o realce já no número activo, sem animação (e descarta animações paradas pela barra escondida). */
+    _snapSlider() {
+        if (!this._style.slider || this._gesture || !this.mapped)
+            return;
+        const spot = this._spot(this._wm.get_active_workspace_index());
+        if (spot)
+            this._moveSlider(spot, false);
     }
 
     _syncSlider(animate) {
@@ -290,6 +340,9 @@ class AutoTilerWorkspaceNumbers extends PanelMenu.Button {
     }
 
     destroy() {
+        if (this._ensureTimer)
+            GLib.Source.remove(this._ensureTimer);
+        this._ensureTimer = 0;
         this._disconnectGesture();
         this._slider?.remove_all_transitions();
         for (const [obj, id] of this._ids ?? []) {

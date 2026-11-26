@@ -56,10 +56,16 @@
       <description>Se desactivado, reprodutores como Celluloid, VLC ou mpv abrem como janelas flutuantes.</description>
     </key>
 
+    <key name="launch-fullscreen-workspace" type="b">
+      <default>true</default>
+      <summary>Abrir em ecrã inteiro num workspace à parte</summary>
+      <description>Com o tiling ligado, move as janelas que arrancam em ecrã inteiro para um workspace vazio.</description>
+    </key>
+
     <key name="limit-enabled" type="b">
       <default>true</default>
       <summary>Limitar janelas por workspace</summary>
-      <description>Se desactivado, não há limite: todas as janelas ficam no mesmo workspace.</description>
+      <description>Se desactivado, o limite deixa de mover janelas para outro workspace.</description>
     </key>
 
     <key name="max-windows" type="i">
@@ -67,6 +73,12 @@
       <range min="1" max="12"/>
       <summary>Máximo de janelas por workspace</summary>
       <description>Quando um workspace atinge este número de janelas em tiling, a janela seguinte vai para o workspace seguinte. Janelas minimizadas e flutuantes não contam.</description>
+    </key>
+
+    <key name="resize-preview" type="b">
+      <default>true</default>
+      <summary>Esticar as vizinhas ao redimensionar (experimental)</summary>
+      <description>Ao arrastar uma aresta, as janelas vizinhas só se esticam/encolhem visualmente; o tamanho real é aplicado quando largas o rato.</description>
     </key>
 
     <key name="swap-on-drag" type="b">
@@ -127,7 +139,7 @@
     <key name="fast-unmaximize" type="b">
       <default>false</default>
       <summary>Desmaximizar sem encolher (experimental)</summary>
-      <description>Ao sair de maximizada/fullscreen, a janela vai para o lugar do tiling antes do frame seguinte, em vez de mostrar um instante o tamanho antigo. Experimental.</description>
+      <description>Ao sair de maximização ou ecrã inteiro, tenta aplicar o tiling mais cedo fora do sinal do Mutter. Experimental.</description>
     </key>
 
     <key name="animation-duration" type="i">
@@ -256,6 +268,41 @@
       <default>3</default>
       <range min="1" max="12"/>
       <summary>Largura da borda (px)</summary>
+    </key>
+
+    <key name="floating-panel" type="b">
+      <default>false</default>
+      <summary>Barra superior flutuante</summary>
+      <description>A barra superior fica afastada das margens, com os cantos arredondados; em fullscreen volta a ficar colada ao topo.</description>
+    </key>
+
+    <key name="floating-panel-bms-backup" type="s">
+      <default>''</default>
+      <summary>Valores do Blur my Shell antes de a barra flutuar (interno)</summary>
+      <description>"raio,cantos": guardados enquanto a barra flutua, para os repor mesmo que a sessão termine a meio.</description>
+    </key>
+
+    <key name="floating-panel-radius" type="i">
+      <default>14</default>
+      <range min="0" max="40"/>
+      <summary>Arredondamento da barra flutuante (px)</summary>
+    </key>
+
+    <key name="skip-size-change-effect" type="b">
+      <default>false</default>
+      <summary>Sem a animação nativa de mudança de tamanho (maximizar, restaurar e ecrã inteiro)</summary>
+    </key>
+
+    <key name="floating-panel-top" type="i">
+      <default>6</default>
+      <range min="0" max="40"/>
+      <summary>Distância da barra flutuante ao topo (px)</summary>
+    </key>
+
+    <key name="floating-panel-bottom" type="i">
+      <default>0</default>
+      <range min="0" max="40"/>
+      <summary>Espaço abaixo da barra flutuante, onde o tiling começa (px)</summary>
     </key>
 
     <key name="focus-border-radius" type="i">
